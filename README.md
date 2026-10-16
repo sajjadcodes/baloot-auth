@@ -10,6 +10,8 @@ It is designed to remain independent of any specific product, company, or busine
 
 The current foundation includes startup environment validation, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, the initial Prisma 7 PostgreSQL schema and adapter, an Argon2id password-hashing service, and short-lived JWT access-token issuance with a Passport JWT strategy. Registration, login, refresh sessions, and authorization endpoints remain planned and are not yet available.
 
+HTTP responses use a consistent envelope: successful responses contain `success`, the HTTP `code`, a `message`, and endpoint `data`; errors contain `success: false`, the HTTP `code`, and a safe `message`. Unexpected server errors are logged server-side and returned to clients as a generic internal-server-error message.
+
 ## Technology Stack
 
 | Technology       | Purpose                            |
