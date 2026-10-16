@@ -8,6 +8,12 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { PrismaService } from '../database/prisma.service.js';
 import { toVarchar } from '../prisma/varchar.js';
+import {
+  REFRESH_TOKEN_BYTES,
+  REFRESH_TOKEN_HASH_ALGORITHM,
+  REFRESH_TOKEN_HASH_MAX_LENGTH,
+  REFRESH_TOKEN_PATTERN,
+} from './auth.constants.js';
 import { AccessTokenService } from './access-token.service.js';
 import { PasswordService } from './password.service.js';
 
@@ -38,8 +44,10 @@ export class AuthService {
   ): Promise<RegistrationResult> {
     const normalizedEmail = email.trim().toLowerCase();
     const passwordHash = await this.passwords.hash(password);
-    const refreshToken = randomBytes(32).toString('base64url');
-    const tokenHash = createHash('sha256').update(refreshToken).digest('hex');
+    const refreshToken = randomBytes(REFRESH_TOKEN_BYTES).toString('base64url');
+    const tokenHash = createHash(REFRESH_TOKEN_HASH_ALGORITHM)
+      .update(refreshToken)
+      .digest('hex');
     const expiresAt = new Date(
       Date.now() +
         this.config.getOrThrow<number>('REFRESH_SESSION_TTL_SECONDS') * 1000,
@@ -70,7 +78,7 @@ export class AuthService {
 
         await transaction.orm.public.RefreshSession.create({
           userId: createdUser.id,
-          tokenHash: toVarchar(tokenHash, 128),
+          tokenHash: toVarchar(tokenHash, REFRESH_TOKEN_HASH_MAX_LENGTH),
           expiresAt: expiresAt.toISOString(),
         });
 
@@ -112,8 +120,10 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password.');
     }
 
-    const refreshToken = randomBytes(32).toString('base64url');
-    const tokenHash = createHash('sha256').update(refreshToken).digest('hex');
+    const refreshToken = randomBytes(REFRESH_TOKEN_BYTES).toString('base64url');
+    const tokenHash = createHash(REFRESH_TOKEN_HASH_ALGORITHM)
+      .update(refreshToken)
+      .digest('hex');
     const expiresAt = new Date(
       Date.now() +
         this.config.getOrThrow<number>('REFRESH_SESSION_TTL_SECONDS') * 1000,
@@ -121,7 +131,7 @@ export class AuthService {
 
     await this.prisma.public.RefreshSession.create({
       userId: user.id,
-      tokenHash: toVarchar(tokenHash, 128),
+      tokenHash: toVarchar(tokenHash, REFRESH_TOKEN_HASH_MAX_LENGTH),
       expiresAt: expiresAt.toISOString(),
     });
 
@@ -131,6 +141,112 @@ export class AuthService {
       user: { id: user.id, email: user.email },
       accessToken,
       refreshToken,
+    };
+  }
+
+  async refresh(refreshToken: string, clientId: string): Promise<LoginResult> {
+    // Validate the opaque token before querying storage; only its hash is persisted.
+    if (!REFRESH_TOKEN_PATTERN.test(refreshToken)) {
+      throw new UnauthorizedException('Invalid or expired refresh token.');
+    }
+
+    const tokenHash = createHash(REFRESH_TOKEN_HASH_ALGORITHM)
+      .update(refreshToken)
+      .digest('hex');
+    const now = new Date();
+    const nowString = now.toISOString();
+    // Prepare replacement credentials before the transaction can consume the old token.
+    const rotatedToken = randomBytes(REFRESH_TOKEN_BYTES).toString('base64url');
+    const rotatedTokenHash = createHash(REFRESH_TOKEN_HASH_ALGORITHM)
+      .update(rotatedToken)
+      .digest('hex');
+    const expiresAt = new Date(
+      now.getTime() +
+        this.config.getOrThrow<number>('REFRESH_SESSION_TTL_SECONDS') * 1000,
+    );
+
+    // Conditionally revoke the current row to ensure concurrent refreshes cannot both rotate it.
+    const outcome = await this.prisma.client.transaction(
+      async (transaction) => {
+        const sessions = transaction.orm.public.RefreshSession;
+        const session = await sessions
+          .where({
+            tokenHash: toVarchar(tokenHash, REFRESH_TOKEN_HASH_MAX_LENGTH),
+          })
+          .first();
+
+        // Reject unknown tokens without revealing whether a session exists.
+        if (!session) {
+          return { kind: 'invalid' } as const;
+        }
+
+        // A revoked token proves replay; revoke the user's other active sessions too.
+        if (session.revokedAt !== null) {
+          await sessions
+            .where({ userId: session.userId, revokedAt: null })
+            .updateAll({ revokedAt: nowString });
+          return { kind: 'reused' } as const;
+        }
+
+        // Expired sessions cannot be rotated.
+        if (Date.parse(session.expiresAt) <= now.getTime()) {
+          return { kind: 'invalid' } as const;
+        }
+
+        // Bind the refresh session to both an active account and its registered client.
+        const user = await transaction.orm.public.User.where({
+          id: session.userId,
+        }).first();
+
+        if (!user || user.clientId !== clientId) {
+          return { kind: 'invalid' } as const;
+        }
+
+        // Disable refresh for inactive users and invalidate this session.
+        if (user.status !== 'ACTIVE') {
+          await sessions
+            .where({ id: session.id, revokedAt: null })
+            .update({ revokedAt: nowString });
+          return { kind: 'invalid' } as const;
+        }
+
+        // Consume only a still-active row; a null result means another request used it first.
+        const revokedSession = await sessions
+          .where({ id: session.id, revokedAt: null })
+          .update({ revokedAt: nowString });
+
+        if (!revokedSession) {
+          await sessions
+            .where({ userId: session.userId, revokedAt: null })
+            .updateAll({ revokedAt: nowString });
+          return { kind: 'reused' } as const;
+        }
+
+        // Store only the replacement token hash in the same transaction as revocation.
+        await sessions.create({
+          userId: user.id,
+          tokenHash: toVarchar(rotatedTokenHash, REFRESH_TOKEN_HASH_MAX_LENGTH),
+          expiresAt: expiresAt.toISOString(),
+        });
+        const accessToken = await this.accessTokens.issue(user.id, clientId);
+
+        return {
+          kind: 'rotated',
+          user: { id: user.id, email: user.email },
+          accessToken,
+        } as const;
+      },
+    );
+
+    if (outcome.kind !== 'rotated') {
+      // Keep response details uniform for unknown, expired, disabled, and replayed tokens.
+      throw new UnauthorizedException('Invalid or expired refresh token.');
+    }
+
+    return {
+      user: outcome.user,
+      accessToken: outcome.accessToken,
+      refreshToken: rotatedToken,
     };
   }
 }

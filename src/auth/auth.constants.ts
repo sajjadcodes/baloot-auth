@@ -9,6 +9,11 @@ export const AUTH_THROTTLE_WINDOW_MS = 60_000;
 export const AUTH_GLOBAL_RATE_LIMIT = 10;
 export const REGISTER_RATE_LIMIT = 5;
 export const LOGIN_RATE_LIMIT = 5;
+export const REFRESH_RATE_LIMIT = 5;
+export const REFRESH_TOKEN_BYTES = 32;
+export const REFRESH_TOKEN_HASH_ALGORITHM = 'sha256';
+export const REFRESH_TOKEN_HASH_MAX_LENGTH = 128;
+export const REFRESH_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 export const ARGON2_MEMORY_COST_KIB = 19 * 1024;
 export const ARGON2_TIME_COST = 2;

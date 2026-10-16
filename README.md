@@ -8,7 +8,7 @@ It is designed to remain independent of any specific product, company, or busine
 
 ## Implementation Status
 
-The current foundation includes validated startup configuration, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, a Prisma ORM 8 PostgreSQL contract and runtime, Argon2id password hashing, short-lived JWT access-token issuance with a Passport JWT strategy, and a globally applied success-response interceptor and exception filter. Application clients have registered origins; users, email uniqueness, authentication requests, and access tokens are scoped to one client. The root health response and `POST /auth/register` and `POST /auth/login` are implemented. Refresh, logout, current-user, email verification, password reset, and authorization endpoints are not yet available.
+The current foundation includes validated startup configuration, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, a Prisma ORM 8 PostgreSQL contract and runtime, Argon2id password hashing, short-lived JWT access-token issuance with a Passport JWT strategy, and a globally applied success-response interceptor and exception filter. Application clients have registered origins; users, email uniqueness, authentication requests, and access tokens are scoped to one client. The root health response and `POST /auth/register`, `POST /auth/login`, and `POST /auth/refresh` are implemented. Logout, current-user, email verification, password reset, and authorization endpoints are not yet available.
 
 HTTP responses use a globally applied envelope: successful responses contain `success`, the HTTP `code`, a `message`, and endpoint `data`; errors contain `success: false`, the HTTP `code`, and a safe `message`. Unexpected server errors are logged server-side without stack traces or exception messages and returned to clients as a generic internal-server-error message.
 
@@ -117,7 +117,7 @@ The auth module issues HS256 access tokens with a configurable lifetime of 60–
 
 On success, the response contains only the public user ID and email inside the standard response envelope. The access and refresh tokens are set only as HttpOnly cookies. The access cookie uses `/`; the refresh cookie is scoped to `/auth`. Both are host-only, and use the configured SameSite policy and expiry. Production cookies are Secure. Registration requires an `Origin` header exactly matching one of `CORS_ORIGINS`.
 
-The `/auth/refresh` and `/auth/logout` endpoints are not implemented yet, so refresh sessions created during registration or login cannot yet be rotated or revoked through the API.
+`POST /auth/refresh` accepts the HttpOnly refresh cookie and requires the registered client ID and an allowed request origin. A valid session is rotated atomically: the previous session is revoked and a new hashed refresh token and access token are issued in the authentication cookies. Reuse of a revoked token revokes the user's remaining active refresh sessions. The endpoint is rate-limited to five requests per minute per source IP. `POST /auth/logout` is not implemented yet, so sessions cannot yet be explicitly revoked by clients.
 
 `POST /auth/login` accepts the same `email` and `password` fields and requires the same `X-Client-Id` header and client-specific origin check. Credentials are looked up only within the selected client. Invalid credentials and disabled accounts receive the same generic authentication error. Successful login creates a new hashed refresh session and sets the same HttpOnly cookies as registration. Login is rate-limited to five requests per minute per source IP.
 
@@ -163,7 +163,7 @@ The authentication endpoint status is:
 | ------ | ----------------------- | --------------------------------------------------------------- |
 | `POST` | `/auth/register`        | Implemented: register a user and set authentication cookies     |
 | `POST` | `/auth/login`           | Implemented: authenticate a user and set authentication cookies |
-| `POST` | `/auth/refresh`         | Planned: refresh and rotate tokens                              |
+| `POST` | `/auth/refresh`         | Implemented: rotate tokens and set authentication cookies       |
 | `POST` | `/auth/logout`          | Planned: revoke a session and clear cookies                     |
 | `GET`  | `/auth/me`              | Planned: retrieve the authenticated user's information          |
 | `POST` | `/auth/verify-email`    | Planned: verify an email address                                |
@@ -188,9 +188,9 @@ The browser sends cookies automatically when the request matches their cookie sc
 
 For a cross-origin frontend, configure the HTTP client to include credentials and configure the server's CORS policy to allow the specific frontend origin.
 
-### Planned Refresh
+### Refresh
 
-Send a request to `POST /auth/refresh`. The service validates the refresh session, rotates the refresh token when appropriate, and updates the cookies.
+Send a credentialed `POST` request to `/auth/refresh` with the public `X-Client-Id` header and an allowed origin. The browser sends the HttpOnly refresh cookie automatically. The service rotates the session and sets new cookies; it never returns tokens in the response body. Reusing a revoked refresh token revokes that user's active refresh sessions.
 
 ### Planned Logout
 

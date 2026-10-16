@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { createHash } from 'node:crypto';
 import { ConflictException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { PrismaService } from '../database/prisma.service.js';
@@ -12,15 +13,23 @@ describe('AuthService', () => {
 
   let service: AuthService;
   let findUser: jest.Mock;
+  let findRefreshUser: jest.Mock;
   let whereUser: jest.Mock;
+  let findRefreshSession: jest.Mock;
+  let whereRefreshSession: jest.Mock;
+  let updateRefreshSession: jest.Mock;
+  let updateAllRefreshSessions: jest.Mock;
   let createSession: jest.Mock;
   let transaction: {
     orm: {
       public: {
         Role: { where: jest.Mock };
-        User: { create: jest.Mock };
+        User: { create: jest.Mock; where: jest.Mock };
         UserRole: { create: jest.Mock };
-        RefreshSession: { create: jest.Mock };
+        RefreshSession: {
+          create: jest.Mock;
+          where: jest.Mock;
+        };
       };
     };
   };
@@ -50,7 +59,18 @@ describe('AuthService', () => {
         },
       );
     findUser = jest.fn();
-    whereUser = jest.fn().mockReturnValue({ first: findUser });
+    findRefreshUser = jest.fn();
+    whereUser = jest.fn((filter: { id?: string }) =>
+      filter.id ? { first: findRefreshUser } : { first: findUser },
+    );
+    findRefreshSession = jest.fn();
+    updateRefreshSession = jest.fn();
+    updateAllRefreshSessions = jest.fn().mockResolvedValue([]);
+    whereRefreshSession = jest.fn().mockReturnValue({
+      first: findRefreshSession,
+      update: updateRefreshSession,
+      updateAll: updateAllRefreshSessions,
+    });
     createSession = jest
       .fn()
       .mockImplementation(
@@ -63,9 +83,12 @@ describe('AuthService', () => {
       orm: {
         public: {
           Role: { where: findRole },
-          User: { create: createUser },
+          User: { create: createUser, where: whereUser },
           UserRole: { create: jest.fn().mockResolvedValue({}) },
-          RefreshSession: { create: createRefreshSession },
+          RefreshSession: {
+            create: createRefreshSession,
+            where: whereRefreshSession,
+          },
         },
       },
     };
@@ -235,4 +258,135 @@ describe('AuthService', () => {
     expect(createSession).not.toHaveBeenCalled();
     expect(issueAccessToken).not.toHaveBeenCalled();
   });
+
+  describe('refresh', () => {
+    const existingToken = 'r'.repeat(43);
+    const refreshSession = {
+      id: 'session-1',
+      userId: user.id,
+      tokenHash: 'stored-token-hash',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      revokedAt: null as string | null,
+    };
+
+    beforeEach(() => {
+      findRefreshSession.mockResolvedValue(refreshSession);
+      updateRefreshSession.mockImplementation((data: { revokedAt: string }) =>
+        Promise.resolve({ ...refreshSession, ...data }),
+      );
+      findRefreshUser.mockResolvedValue({
+        ...user,
+        status: 'ACTIVE',
+        clientId,
+      });
+    });
+
+    it('rotates a valid session and issues a new access token', async () => {
+      const result = await service.refresh(existingToken, clientId);
+
+      expect(whereRefreshSession).toHaveBeenNthCalledWith(1, {
+        tokenHash: createHashForTest(existingToken),
+      });
+      expect(whereRefreshSession).toHaveBeenNthCalledWith(2, {
+        id: refreshSession.id,
+        revokedAt: null,
+      });
+      expect(updateRefreshSession).toHaveBeenCalledTimes(1);
+      expect(refreshSessionData?.userId).toBe(user.id);
+      expect(refreshSessionData?.tokenHash).toMatch(/^[a-f0-9]{64}$/);
+      expect(refreshSessionData?.tokenHash).not.toBe(
+        createHashForTest(existingToken),
+      );
+      expect(refreshSessionData?.expiresAt).toBeDefined();
+      expect(typeof result.refreshToken).toBe('string');
+      expect(result.refreshToken).not.toBe(existingToken);
+      expect(result.user).toEqual(user);
+      expect(result.accessToken).toBe('signed-access');
+      expect(issueAccessToken).toHaveBeenCalledWith(user.id, clientId);
+    });
+
+    it('rejects malformed or unknown refresh tokens', async () => {
+      await expect(service.refresh('malformed', clientId)).rejects.toThrow(
+        'Invalid or expired refresh token.',
+      );
+      findRefreshSession.mockResolvedValue(null);
+      await expect(service.refresh(existingToken, clientId)).rejects.toThrow(
+        'Invalid or expired refresh token.',
+      );
+      expect(whereRefreshSession).toHaveBeenCalledTimes(1);
+      expect(issueAccessToken).not.toHaveBeenCalled();
+    });
+
+    it('rejects expired sessions without rotating them', async () => {
+      findRefreshSession.mockResolvedValue({
+        ...refreshSession,
+        expiresAt: new Date(Date.now() - 1000).toISOString(),
+      });
+
+      await expect(service.refresh(existingToken, clientId)).rejects.toThrow(
+        'Invalid or expired refresh token.',
+      );
+      expect(updateRefreshSession).not.toHaveBeenCalled();
+      expect(refreshSessionData).toBeUndefined();
+    });
+
+    it('revokes all active sessions when a revoked token is reused', async () => {
+      findRefreshSession.mockResolvedValue({
+        ...refreshSession,
+        revokedAt: new Date().toISOString(),
+      });
+
+      await expect(service.refresh(existingToken, clientId)).rejects.toThrow(
+        'Invalid or expired refresh token.',
+      );
+      expect(updateAllRefreshSessions).toHaveBeenCalledTimes(1);
+      expect(whereRefreshSession).toHaveBeenLastCalledWith({
+        userId: user.id,
+        revokedAt: null,
+      });
+      expect(refreshSessionData).toBeUndefined();
+    });
+
+    it('rejects a session presented for a different client', async () => {
+      findRefreshUser.mockResolvedValue({
+        ...user,
+        status: 'ACTIVE',
+        clientId: 'another-client',
+      });
+
+      await expect(service.refresh(existingToken, clientId)).rejects.toThrow(
+        'Invalid or expired refresh token.',
+      );
+      expect(updateRefreshSession).not.toHaveBeenCalled();
+      expect(refreshSessionData).toBeUndefined();
+    });
+
+    it('rejects disabled users and revokes their session', async () => {
+      findRefreshUser.mockResolvedValue({
+        ...user,
+        status: 'DISABLED',
+        clientId,
+      });
+
+      await expect(service.refresh(existingToken, clientId)).rejects.toThrow(
+        'Invalid or expired refresh token.',
+      );
+      expect(updateRefreshSession).toHaveBeenCalledTimes(1);
+      expect(refreshSessionData).toBeUndefined();
+    });
+
+    it('treats an already-consumed session as reuse', async () => {
+      updateRefreshSession.mockResolvedValue(null);
+
+      await expect(service.refresh(existingToken, clientId)).rejects.toThrow(
+        'Invalid or expired refresh token.',
+      );
+      expect(updateAllRefreshSessions).toHaveBeenCalledTimes(1);
+      expect(refreshSessionData).toBeUndefined();
+    });
+  });
 });
+
+function createHashForTest(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
