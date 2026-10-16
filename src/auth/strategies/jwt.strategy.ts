@@ -3,7 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-jwt';
 import type { Request } from 'express';
-import { ACCESS_TOKEN_COOKIE } from '../auth.constants';
+import {
+  ACCESS_TOKEN_ALGORITHM,
+  ACCESS_TOKEN_COOKIE,
+  BEARER_TOKEN_PATTERN,
+} from '../auth.constants';
 
 export interface AuthenticatedUser {
   userId: string;
@@ -20,7 +24,7 @@ export function extractAccessToken(request: Request): string | null {
   const authorization = request.headers.authorization;
   const match =
     typeof authorization === 'string'
-      ? authorization.match(/^Bearer\s+(\S+)$/i)
+      ? authorization.match(BEARER_TOKEN_PATTERN)
       : null;
   return match?.[1] ?? null;
 }
@@ -32,7 +36,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       jwtFromRequest: extractAccessToken,
       ignoreExpiration: false,
       secretOrKey: config.getOrThrow<string>('JWT_ACCESS_SECRET'),
-      algorithms: ['HS256'],
+      algorithms: [ACCESS_TOKEN_ALGORITHM],
     });
   }
 

@@ -10,6 +10,11 @@ import { AuthService } from './auth.service';
 import { TrustedOriginGuard } from './guards/trusted-origin.guard';
 import { PasswordService } from './password.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import {
+  ACCESS_TOKEN_ALGORITHM,
+  AUTH_GLOBAL_RATE_LIMIT,
+  AUTH_THROTTLE_WINDOW_MS,
+} from './auth.constants';
 
 @Module({
   imports: [
@@ -18,13 +23,15 @@ import { JwtStrategy } from './strategies/jwt.strategy';
       useFactory: (config: ConfigService) => ({
         secret: config.getOrThrow<string>('JWT_ACCESS_SECRET'),
         signOptions: {
-          algorithm: 'HS256',
+          algorithm: ACCESS_TOKEN_ALGORITHM,
           expiresIn: config.getOrThrow<number>('JWT_ACCESS_TTL_SECONDS'),
         },
       }),
     }),
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]),
+    ThrottlerModule.forRoot([
+      { ttl: AUTH_THROTTLE_WINDOW_MS, limit: AUTH_GLOBAL_RATE_LIMIT },
+    ]),
   ],
   controllers: [AuthController],
   providers: [

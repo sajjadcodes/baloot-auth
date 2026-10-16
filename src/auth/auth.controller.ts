@@ -6,6 +6,7 @@ import { AuthCookiesService } from './auth-cookies.service';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { TrustedOriginGuard } from './guards/trusted-origin.guard';
+import { AUTH_THROTTLE_WINDOW_MS, REGISTER_RATE_LIMIT } from './auth.constants';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -17,7 +18,12 @@ export class AuthController {
 
   @Post('register')
   @UseGuards(ThrottlerGuard, TrustedOriginGuard)
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({
+    default: {
+      limit: REGISTER_RATE_LIMIT,
+      ttl: AUTH_THROTTLE_WINDOW_MS,
+    },
+  })
   @ApiOperation({
     summary: 'Register a user',
     description:

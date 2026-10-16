@@ -1,14 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
+import {
+  ARGON2_MEMORY_COST_KIB,
+  ARGON2_PARALLELISM,
+  ARGON2_TIME_COST,
+} from './auth.constants';
 
 @Injectable()
 export class PasswordService {
   async hash(password: string): Promise<string> {
     return argon2.hash(password, {
       type: argon2.argon2id,
-      memoryCost: 19 * 1024,
-      timeCost: 2,
-      parallelism: 1,
+      memoryCost: ARGON2_MEMORY_COST_KIB,
+      timeCost: ARGON2_TIME_COST,
+      parallelism: ARGON2_PARALLELISM,
     });
   }
 
