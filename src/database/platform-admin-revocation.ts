@@ -1,9 +1,50 @@
 import { isEmail } from 'class-validator';
 import { CLIENT_ID_PATTERN } from '../auth/auth.constants.js';
+import { toVarchar } from '../prisma/varchar.js';
+import type { PrismaService } from './prisma.service.js';
 
 export interface PlatformAdminRevocationTarget {
   clientId: string;
   email: string;
+}
+
+export type PlatformAdminRevocationTransaction = Parameters<
+  Parameters<PrismaService['client']['transaction']>[0]
+>[0];
+
+export async function revokePlatformAdminAssignment(
+  transaction: PlatformAdminRevocationTransaction,
+  target: PlatformAdminRevocationTarget,
+): Promise<boolean> {
+  const user = await transaction.orm.public.User.where({
+    clientId: target.clientId,
+    email: toVarchar(target.email, 320),
+  }).first();
+
+  if (!user) {
+    throw new Error(
+      `No account "${target.email}" was found for client "${target.clientId}".`,
+    );
+  }
+
+  const role = await transaction.orm.public.Role.where({
+    name: toVarchar('platform_admin', 64),
+  }).first();
+
+  if (!role) {
+    return false;
+  }
+
+  const assignmentFilter = { userId: user.id, roleId: role.id };
+  const assignment =
+    await transaction.orm.public.UserRole.where(assignmentFilter).first();
+
+  if (!assignment) {
+    return false;
+  }
+
+  await transaction.orm.public.UserRole.where(assignmentFilter).delete();
+  return true;
 }
 
 export function parsePlatformAdminRevocationArgs(

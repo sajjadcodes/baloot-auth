@@ -1,6 +1,9 @@
 import 'dotenv/config';
 import postgres from '@prisma/orm-postgres/runtime';
-import { parsePlatformAdminRevocationArgs } from '../src/database/platform-admin-revocation.js';
+import {
+  parsePlatformAdminRevocationArgs,
+  revokePlatformAdminAssignment,
+} from '../src/database/platform-admin-revocation.js';
 import type { Contract } from '../src/prisma/contract.d.js';
 import contractJson from '../src/prisma/contract.json' with { type: 'json' };
 import { toVarchar } from '../src/prisma/varchar.js';
@@ -19,42 +22,12 @@ const prisma = postgres<Contract>({
 });
 
 async function revokePlatformAdmin(): Promise<void> {
-  const revoked = await prisma.transaction(async (transaction) => {
-    const user = await transaction.orm.public.User.where({
-      clientId: target.clientId,
+  const revoked = await prisma.transaction((transaction) =>
+    revokePlatformAdminAssignment(transaction, {
+      ...target,
       email: toVarchar(target.email, 320),
-    }).first();
-
-    if (!user) {
-      throw new Error(
-        `No account "${target.email}" was found for client "${target.clientId}".`,
-      );
-    }
-
-    const role = await transaction.orm.public.Role.where({
-      name: toVarchar('platform_admin', 64),
-    }).first();
-
-    if (!role) {
-      return false;
-    }
-
-    const assignment = await transaction.orm.public.UserRole.where({
-      userId: user.id,
-      roleId: role.id,
-    }).first();
-
-    if (!assignment) {
-      return false;
-    }
-
-    await transaction.orm.public.UserRole.where({
-      userId: user.id,
-      roleId: role.id,
-    }).delete();
-
-    return true;
-  });
+    }),
+  );
 
   if (revoked) {
     console.log(
