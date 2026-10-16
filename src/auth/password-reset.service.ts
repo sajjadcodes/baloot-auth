@@ -181,12 +181,15 @@ export class PasswordResetService {
       .digest('hex');
   }
 
+  // Validate that the reset token still matches the user's current password hash.
   private matchesFingerprint(
     fingerprint: string,
     passwordHash: string,
   ): boolean {
+    // Compare fixed-size byte buffers so token validity does not leak through string timing.
     const expected = Buffer.from(this.fingerprint(passwordHash), 'hex');
     const actual = Buffer.from(fingerprint, 'hex');
+    // timingSafeEqual throws for different lengths; reject those before comparing.
     return (
       actual.length === expected.length && timingSafeEqual(actual, expected)
     );
