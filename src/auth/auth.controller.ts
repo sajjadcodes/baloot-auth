@@ -1,6 +1,13 @@
-import { Body, Controller, Post, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Headers,
+  Post,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { AuthCookiesService } from './auth-cookies.service';
 import { AuthService } from './auth.service';
@@ -9,6 +16,7 @@ import { RegisterDto } from './dto/register.dto';
 import { TrustedOriginGuard } from './guards/trusted-origin.guard';
 import {
   AUTH_THROTTLE_WINDOW_MS,
+  CLIENT_ID_HEADER,
   LOGIN_RATE_LIMIT,
   REGISTER_RATE_LIMIT,
 } from './auth.constants';
@@ -34,11 +42,17 @@ export class AuthController {
     description:
       'Creates a user with the default role and sets access and refresh HttpOnly cookies. Tokens are not returned in the response body.',
   })
+  @ApiHeader({
+    name: CLIENT_ID_HEADER,
+    description: 'Public ID of the registered application client.',
+    required: true,
+  })
   async register(
     @Body() dto: RegisterDto,
+    @Headers(CLIENT_ID_HEADER) clientId: string,
     @Res({ passthrough: true }) response: Response,
   ): Promise<{ id: string; email: string }> {
-    const result = await this.auth.register(dto.email, dto.password);
+    const result = await this.auth.register(dto.email, dto.password, clientId);
     this.cookies.setAuthenticationCookies(
       response,
       result.accessToken,
@@ -60,11 +74,17 @@ export class AuthController {
     description:
       'Authenticates a user and sets access and refresh HttpOnly cookies. Tokens are not returned in the response body.',
   })
+  @ApiHeader({
+    name: CLIENT_ID_HEADER,
+    description: 'Public ID of the registered application client.',
+    required: true,
+  })
   async login(
     @Body() dto: LoginDto,
+    @Headers(CLIENT_ID_HEADER) clientId: string,
     @Res({ passthrough: true }) response: Response,
   ): Promise<{ id: string; email: string }> {
-    const result = await this.auth.login(dto.email, dto.password);
+    const result = await this.auth.login(dto.email, dto.password, clientId);
     this.cookies.setAuthenticationCookies(
       response,
       result.accessToken,

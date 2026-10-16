@@ -12,17 +12,47 @@ enum UserStatus {
   DISABLED
 }
 
+enum ClientStatus {
+  ACTIVE
+  DISABLED
+}
+
+model Client {
+  id             String                @id @default(uuid()) @db.Uuid
+  name           String                @db.VarChar(128)
+  status         ClientStatus          @default(ACTIVE)
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  allowedOrigins ClientAllowedOrigin[]
+  users          User[]
+
+  @@map("clients")
+}
+
+model ClientAllowedOrigin {
+  clientId  String   @map("client_id") @db.Uuid
+  origin    String   @db.VarChar(512)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@id([clientId, origin])
+  @@map("client_allowed_origins")
+}
+
 model User {
   id              String           @id @default(uuid()) @db.Uuid
-  email           String           @unique @db.VarChar(320)
+  clientId        String           @map("client_id") @db.Uuid
+  email           String           @db.VarChar(320)
   passwordHash    String           @map("password_hash") @db.VarChar(255)
   emailVerifiedAt DateTime?        @map("email_verified_at") @db.Timestamptz(6)
   status          UserStatus       @default(ACTIVE)
   createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  client          Client           @relation(fields: [clientId], references: [id], onDelete: Restrict)
   roles           UserRole[]
   refreshSessions RefreshSession[]
 
+  @@unique([clientId, email])
   @@map("users")
 }
 

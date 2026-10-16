@@ -14,18 +14,26 @@ describe('JwtStrategy', () => {
     strategy = new JwtStrategy(config);
   });
 
-  it('maps a valid subject claim to the authenticated user', () => {
-    expect(strategy.validate({ sub: 'user-123' })).toEqual({
+  it('maps valid user and client claims to the authenticated user', () => {
+    expect(
+      strategy.validate({ sub: 'user-123', clientId: 'client-123' }),
+    ).toEqual({
       userId: 'user-123',
+      clientId: 'client-123',
     });
   });
 
-  it.each([null, {}, { sub: '' }, { sub: 123 }])(
-    'rejects an invalid token payload: %p',
-    (payload) => {
-      expect(() => strategy.validate(payload)).toThrow(UnauthorizedException);
-    },
-  );
+  it.each([
+    null,
+    {},
+    { sub: '' },
+    { sub: 123 },
+    { sub: 'user-123' },
+    { sub: 'user-123', clientId: '' },
+    { sub: 'user-123', clientId: 123 },
+  ])('rejects an invalid token payload: %p', (payload) => {
+    expect(() => strategy.validate(payload)).toThrow(UnauthorizedException);
+  });
 
   it('extracts access tokens from the HttpOnly cookie before a bearer header', () => {
     const request = {

@@ -11,6 +11,7 @@ import {
 
 export interface AuthenticatedUser {
   userId: string;
+  clientId: string;
 }
 
 export function extractAccessToken(request: Request): string | null {
@@ -46,11 +47,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       payload === null ||
       !('sub' in payload) ||
       typeof payload.sub !== 'string' ||
-      payload.sub.trim().length === 0
+      payload.sub.trim().length === 0 ||
+      !('clientId' in payload) ||
+      typeof payload.clientId !== 'string' ||
+      payload.clientId.trim().length === 0
     ) {
       throw new UnauthorizedException('Invalid access token.');
     }
 
-    return { userId: payload.sub };
+    return { userId: payload.sub, clientId: payload.clientId };
   }
 }

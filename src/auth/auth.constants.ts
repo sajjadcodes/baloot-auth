@@ -1,6 +1,9 @@
 export const ACCESS_TOKEN_COOKIE = 'baloot_access';
 export const REFRESH_TOKEN_COOKIE = 'baloot_refresh';
 export const BEARER_TOKEN_PATTERN = /^Bearer\s+(\S+)$/i;
+export const CLIENT_ID_HEADER = 'x-client-id';
+export const CLIENT_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const AUTH_THROTTLE_WINDOW_MS = 60_000;
 export const AUTH_GLOBAL_RATE_LIMIT = 10;

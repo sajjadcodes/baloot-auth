@@ -8,6 +8,7 @@ import { AuthService } from './auth.service';
 describe('AuthService', () => {
   const user = { id: 'user-1', email: 'person@example.com' };
   const role = { id: 'role-user' };
+  const clientId = '00000000-0000-4000-8000-000000000001';
 
   let service: AuthService;
   let findUser: jest.Mock;
@@ -86,6 +87,7 @@ describe('AuthService', () => {
     const result = await service.register(
       ' Person@Example.com ',
       'long password',
+      clientId,
     );
 
     expect(hashPassword).toHaveBeenCalledWith('long password');
@@ -97,6 +99,7 @@ describe('AuthService', () => {
     });
     expect(transaction.user.create).toHaveBeenCalledWith({
       data: {
+        clientId,
         email: 'person@example.com',
         passwordHash: 'argon2-hash',
         roles: { create: { role: { connect: { id: role.id } } } },
@@ -119,7 +122,7 @@ describe('AuthService', () => {
       accessToken: 'signed-access',
       refreshToken: result.refreshToken,
     });
-    expect(issueAccessToken).toHaveBeenCalledWith(user.id);
+    expect(issueAccessToken).toHaveBeenCalledWith(user.id, clientId);
   });
 
   it('returns a generic conflict for duplicate registration', async () => {
@@ -131,10 +134,10 @@ describe('AuthService', () => {
     );
 
     await expect(
-      service.register('person@example.com', 'long password'),
+      service.register('person@example.com', 'long password', clientId),
     ).rejects.toThrow(ConflictException);
     await expect(
-      service.register('person@example.com', 'long password'),
+      service.register('person@example.com', 'long password', clientId),
     ).rejects.toThrow('Registration could not be completed.');
     expect(issueAccessToken).not.toHaveBeenCalled();
   });
@@ -143,7 +146,7 @@ describe('AuthService', () => {
     transact.mockRejectedValue(new Error('database unavailable'));
 
     await expect(
-      service.register('person@example.com', 'long password'),
+      service.register('person@example.com', 'long password', clientId),
     ).rejects.toThrow('database unavailable');
   });
 
@@ -152,18 +155,26 @@ describe('AuthService', () => {
       ...user,
       passwordHash: 'argon2-hash',
       status: 'ACTIVE',
+      clientId,
     });
     const before = Date.now();
 
-    const result = await service.login(' Person@Example.com ', 'password');
+    const result = await service.login(
+      ' Person@Example.com ',
+      'password',
+      clientId,
+    );
 
     expect(findUser).toHaveBeenCalledWith({
-      where: { email: 'person@example.com' },
+      where: {
+        clientId_email: { clientId, email: 'person@example.com' },
+      },
       select: {
         id: true,
         email: true,
         passwordHash: true,
         status: true,
+        clientId: true,
       },
     });
     expect(hashPassword).not.toHaveBeenCalled();
@@ -175,7 +186,7 @@ describe('AuthService', () => {
     expect(loginSessionData?.expiresAt.getTime()).toBeGreaterThanOrEqual(
       before + 2592000000,
     );
-    expect(issueAccessToken).toHaveBeenCalledWith(user.id);
+    expect(issueAccessToken).toHaveBeenCalledWith(user.id, clientId);
     expect(result.user).toEqual(user);
     expect(result.accessToken).toBe('signed-access');
     expect(typeof result.refreshToken).toBe('string');
@@ -185,7 +196,7 @@ describe('AuthService', () => {
     findUser.mockResolvedValue(null);
 
     await expect(
-      service.login('missing@example.com', 'password'),
+      service.login('missing@example.com', 'password', clientId),
     ).rejects.toThrow('Invalid email or password.');
     expect(createSession).not.toHaveBeenCalled();
     expect(issueAccessToken).not.toHaveBeenCalled();
@@ -196,12 +207,13 @@ describe('AuthService', () => {
       ...user,
       passwordHash: 'argon2-hash',
       status: 'ACTIVE',
+      clientId,
     });
     verifyPassword.mockResolvedValue(false);
 
-    await expect(service.login(user.email, 'wrong password')).rejects.toThrow(
-      'Invalid email or password.',
-    );
+    await expect(
+      service.login(user.email, 'wrong password', clientId),
+    ).rejects.toThrow('Invalid email or password.');
     expect(createSession).not.toHaveBeenCalled();
     expect(issueAccessToken).not.toHaveBeenCalled();
   });
@@ -211,12 +223,13 @@ describe('AuthService', () => {
       ...user,
       passwordHash: 'argon2-hash',
       status: 'DISABLED',
+      clientId,
     });
     verifyPassword.mockResolvedValue(true);
 
-    await expect(service.login(user.email, 'correct password')).rejects.toThrow(
-      'Invalid email or password.',
-    );
+    await expect(
+      service.login(user.email, 'correct password', clientId),
+    ).rejects.toThrow('Invalid email or password.');
     expect(createSession).not.toHaveBeenCalled();
     expect(issueAccessToken).not.toHaveBeenCalled();
   });

@@ -30,7 +30,11 @@ export class AuthService {
     private readonly config: ConfigService,
   ) {}
 
-  async register(email: string, password: string): Promise<RegistrationResult> {
+  async register(
+    email: string,
+    password: string,
+    clientId: string,
+  ): Promise<RegistrationResult> {
     const normalizedEmail = email.trim().toLowerCase();
     const passwordHash = await this.passwords.hash(password);
     const refreshToken = randomBytes(32).toString('base64url');
@@ -53,6 +57,7 @@ export class AuthService {
 
         const createdUser = await transaction.user.create({
           data: {
+            clientId,
             email: normalizedEmail,
             passwordHash,
             roles: {
@@ -82,7 +87,7 @@ export class AuthService {
       throw error;
     }
 
-    const accessToken = await this.accessTokens.issue(user.id);
+    const accessToken = await this.accessTokens.issue(user.id, clientId);
 
     return {
       user,
@@ -91,15 +96,20 @@ export class AuthService {
     };
   }
 
-  async login(email: string, password: string): Promise<LoginResult> {
+  async login(
+    email: string,
+    password: string,
+    clientId: string,
+  ): Promise<LoginResult> {
     const normalizedEmail = email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({
-      where: { email: normalizedEmail },
+      where: { clientId_email: { clientId, email: normalizedEmail } },
       select: {
         id: true,
         email: true,
         passwordHash: true,
         status: true,
+        clientId: true,
       },
     });
 
@@ -126,7 +136,7 @@ export class AuthService {
       },
     });
 
-    const accessToken = await this.accessTokens.issue(user.id);
+    const accessToken = await this.accessTokens.issue(user.id, user.clientId);
 
     return {
       user: { id: user.id, email: user.email },

@@ -8,7 +8,7 @@ It is designed to remain independent of any specific product, company, or busine
 
 ## Implementation Status
 
-The current foundation includes validated startup configuration, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, the initial Prisma 7 PostgreSQL schema and adapter, Argon2id password hashing, short-lived JWT access-token issuance with a Passport JWT strategy, and a globally applied success-response interceptor and exception filter. The root health response and `POST /auth/register` and `POST /auth/login` are implemented. Refresh, logout, current-user, email verification, password reset, and authorization endpoints are not yet available.
+The current foundation includes validated startup configuration, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, a Prisma 7 PostgreSQL schema and adapter, Argon2id password hashing, short-lived JWT access-token issuance with a Passport JWT strategy, and a globally applied success-response interceptor and exception filter. Application clients have registered origins; users, email uniqueness, authentication requests, and access tokens are scoped to one client. The root health response and `POST /auth/register` and `POST /auth/login` are implemented. Refresh, logout, current-user, email verification, password reset, and authorization endpoints are not yet available.
 
 HTTP responses use a globally applied envelope: successful responses contain `success`, the HTTP `code`, a `message`, and endpoint `data`; errors contain `success: false`, the HTTP `code`, and a safe `message`. Unexpected server errors are logged server-side without stack traces or exception messages and returned to clients as a generic internal-server-error message.
 
@@ -82,32 +82,60 @@ Install dependencies with pnpm:
 pnpm install
 ```
 
-Copy `.env.example` to `.env`, then set `DATABASE_URL` to a reachable PostgreSQL database and replace `JWT_ACCESS_SECRET` with a cryptographically random secret of at least 32 characters. `JWT_ACCESS_TTL_SECONDS` must be between 60 and 3600 seconds and defaults to 900. `REFRESH_SESSION_TTL_SECONDS` must be between 3600 and 7776000 seconds and defaults to 2592000. `AUTH_COOKIE_SAME_SITE` accepts `lax`, `strict`, or `none`; `none` is allowed only in production, where cookies are Secure. `CORS_ORIGINS` is a comma-separated list of exact HTTP(S) origins; wildcard origins and paths are not accepted. The application validates these values at startup and connects to PostgreSQL before listening.
+Copy `.env.example` to `.env`, then set `DATABASE_URL` to a reachable PostgreSQL database and replace `JWT_ACCESS_SECRET` with a cryptographically random secret of at least 32 characters. `JWT_ACCESS_TTL_SECONDS` must be between 60 and 3600 seconds and defaults to 900. `REFRESH_SESSION_TTL_SECONDS` must be between 3600 and 7776000 seconds and defaults to 2592000. `AUTH_COOKIE_SAME_SITE` accepts `lax`, `strict`, or `none`; `none` is allowed only in production, where cookies are Secure. `CORS_ORIGINS` is a comma-separated list of exact HTTP(S) origins; wildcard origins and paths are not accepted. Provision application clients using `SEED_CLIENTS_JSON` in the untracked `.env`; this JSON array keeps each client's ID, name, and origins together. Keep real deployment origins and client IDs out of committed files. The application validates runtime configuration and connects to PostgreSQL before listening.
 
 Generate the Prisma Client and start the development server:
 
 ```bash
 pnpm db:generate
+pnpm db:seed
 pnpm start:dev
 ```
 
-The Prisma schema has not been migrated to the database. Database migrations remain under maintainer control and must not be generated or applied without explicit approval.
+After applying the approved database migration, configure `SEED_CLIENTS_JSON` and `CORS_ORIGINS` in `.env`, then run `pnpm db:seed` to provision the client records. Each client needs a stable UUID; configure that same public ID in its frontend. Client IDs identify an application but are not secrets. The seed is idempotent and upserts origins without removing existing ones. Do not commit real `.env` values. The Prisma schema has not been migrated to the database. Database migrations remain under maintainer control and must not be generated or applied without explicit approval.
+
+For example, keep the JSON in the local `.env` as a single-line value (replace example values with deployment configuration):
+
+```dotenv
+CORS_ORIGINS=http://localhost:5173,https://app.example.com
+SEED_CLIENTS_JSON=[{"id":"00000000-0000-4000-8000-000000000001","name":"Example app","origins":["http://localhost:5173","https://app.example.com"]}]
+```
 
 ## JWT Access-Token Foundation
 
-The auth module issues HS256 access tokens with a configurable lifetime of 60–3600 seconds (900 seconds by default). The Passport JWT strategy extracts access tokens from the HttpOnly access cookie or, for non-browser clients, the `Authorization: Bearer` header; it verifies signature and expiration and maps a valid `sub` claim to `request.user.userId`.
+The auth module issues HS256 access tokens with a configurable lifetime of 60–3600 seconds (900 seconds by default). The Passport JWT strategy extracts access tokens from the HttpOnly access cookie or, for non-browser clients, the `Authorization: Bearer` header; it verifies signature and expiration and maps valid `sub` and `clientId` claims to `request.user.userId` and `request.user.clientId`.
 
 `JWT_ACCESS_SECRET` must be a private, cryptographically random value with at least 32 characters. Never commit or log the production secret.
 
 ## Registration
 
-`POST /auth/register` accepts JSON containing `email` and `password`. Email is normalized to lowercase; passwords must be 12–128 characters. The service assigns the `user` role server-side, stores an Argon2id password hash and a SHA-256 hash of a random refresh token in the same database transaction, and rate-limits registration to five requests per minute per client.
+`POST /auth/register` accepts JSON containing `email` and `password` and requires the `X-Client-Id` header containing the UUID of an active registered client. This ID is a public frontend configuration value, not a secret or cookie. The request origin must be allowed globally in `CORS_ORIGINS` and assigned to that client in `client_allowed_origins`. Email is normalized to lowercase; passwords must be 12–128 characters. Email uniqueness is scoped to the client, so the same email can register independently with different applications. The service assigns the `user` role server-side, stores an Argon2id password hash and a SHA-256 hash of a random refresh token in the same database transaction, and rate-limits registration to five requests per minute per source IP.
 
 On success, the response contains only the public user ID and email inside the standard response envelope. The access and refresh tokens are set only as HttpOnly cookies. The access cookie uses `/`; the refresh cookie is scoped to `/auth`. Both are host-only, and use the configured SameSite policy and expiry. Production cookies are Secure. Registration requires an `Origin` header exactly matching one of `CORS_ORIGINS`.
 
 The `/auth/refresh` and `/auth/logout` endpoints are not implemented yet, so refresh sessions created during registration or login cannot yet be rotated or revoked through the API.
 
-`POST /auth/login` accepts the same `email` and `password` fields, normalizes the email, and verifies the password against the stored Argon2id hash. Invalid credentials and disabled accounts receive the same generic authentication error. Successful login creates a new hashed refresh session and sets the same HttpOnly cookies as registration. Login requires a trusted `Origin` and is rate-limited to five requests per minute.
+`POST /auth/login` accepts the same `email` and `password` fields and requires the same `X-Client-Id` header and client-specific origin check. Credentials are looked up only within the selected client. Invalid credentials and disabled accounts receive the same generic authentication error. Successful login creates a new hashed refresh session and sets the same HttpOnly cookies as registration. Login is rate-limited to five requests per minute per source IP.
+
+Client records and their allowed origins are stored separately. They are not managed through a public API and must never be created from user-supplied IDs during public registration. Provision clients through a trusted local seed or other controlled administrative process before using registration or login. The browser sends the public client ID in `X-Client-Id`; the server alone sets authentication cookies, because browsers cannot create HttpOnly cookies from frontend code. The client ID and an Origin header are not secrets or proof of identity: non-browser callers can send arbitrary headers, so authentication must continue to rely on credentials and signed tokens.
+
+### Adding an Allowed Origin
+
+An origin is the exact scheme, hostname, and optional port, with no path or trailing slash (for example, `https://your-frontend.example` or `http://localhost:5173`). Allowing an origin requires both a backend CORS change and a database allowlist change; doing only one will not enable browser authentication.
+
+**Backend steps**
+
+1. Add the exact origin to `CORS_ORIGINS` in the backend environment, preserving other comma-separated origins. Keep deployment-specific values in untracked `.env` or deployment environment settings, not in Git.
+2. Add the exact origin to that client's `origins` array in `SEED_CLIENTS_JSON` and run `pnpm db:seed` against the configured database. The seed upserts origin rows and leaves existing origins intact. Do not create a second client merely to add another domain for the same application. Client and origin records must be changed through a trusted administrative or deployment process, never through public registration.
+3. Restart/redeploy the backend so it loads the changed CORS environment value. Confirm the origin row is present and the client is active.
+
+**Frontend steps**
+
+1. Keep using that application's provisioned public client UUID as the `X-Client-Id` header on `/auth/register` and `/auth/login`, configured through the frontend's public environment/config (for example, `VITE_AUTH_CLIENT_ID` or `NEXT_PUBLIC_AUTH_CLIENT_ID`). Do not generate a new ID when adding a domain, and do not treat the ID as a secret.
+2. Send authentication requests with credentials enabled (`credentials: 'include'` with `fetch`, or `withCredentials: true` with Axios). Let the browser set the `Origin` header automatically.
+3. Do not create, read, or store the authentication cookies in frontend code; the backend sets HttpOnly cookies. Verify the configured cookie `SameSite`/`Secure` policy is appropriate for the frontend and API deployment domains.
+
+For a new application rather than an additional frontend origin, provision a separate client UUID, name, and allowed-origin rows through a trusted seed or deployment process, then configure that UUID as the frontend's `X-Client-Id`. Public registration must not auto-create client records.
 
 ## API Documentation
 

@@ -27,11 +27,12 @@ describe('AuthController', () => {
       email: result.user.email,
       password: 'long registration password',
     };
+    const clientId = '00000000-0000-4000-8000-000000000001';
 
-    await expect(controller.register(dto, response)).resolves.toEqual(
+    await expect(controller.register(dto, clientId, response)).resolves.toEqual(
       result.user,
     );
-    expect(register).toHaveBeenCalledWith(dto.email, dto.password);
+    expect(register).toHaveBeenCalledWith(dto.email, dto.password, clientId);
     expect(setAuthenticationCookies).toHaveBeenCalledWith(
       response,
       result.accessToken,
@@ -55,6 +56,7 @@ describe('AuthController', () => {
     await expect(
       controller.register(
         { email: 'person@example.com', password: 'long registration password' },
+        '00000000-0000-4000-8000-000000000001',
         {} as Response,
       ),
     ).rejects.toThrow('registration failed');
@@ -79,9 +81,12 @@ describe('AuthController', () => {
       password: 'long registration password',
     };
     const response = {} as Response;
+    const clientId = '00000000-0000-4000-8000-000000000001';
 
-    await expect(controller.login(dto, response)).resolves.toEqual(result.user);
-    expect(login).toHaveBeenCalledWith(dto.email, dto.password);
+    await expect(controller.login(dto, clientId, response)).resolves.toEqual(
+      result.user,
+    );
+    expect(login).toHaveBeenCalledWith(dto.email, dto.password, clientId);
     expect(setAuthenticationCookies).toHaveBeenCalledWith(
       response,
       result.accessToken,
@@ -101,6 +106,7 @@ describe('AuthController', () => {
     await expect(
       controller.login(
         { email: 'person@example.com', password: 'long password value' },
+        '00000000-0000-4000-8000-000000000001',
         {} as Response,
       ),
     ).rejects.toThrow('login failed');
