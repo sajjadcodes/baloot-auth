@@ -1,4 +1,4 @@
-import { CLIENT_ID_PATTERN } from '../auth/auth.constants';
+import { CLIENT_ID_PATTERN } from '../auth/auth.constants.js';
 
 export interface SeedClient {
   id: string;

@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
-import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from './auth.constants';
-import { AuthCookiesService } from './auth-cookies.service';
+import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from './auth.constants.js';
+import { AuthCookiesService } from './auth-cookies.service.js';
 
 describe('AuthCookiesService', () => {
   function createService(

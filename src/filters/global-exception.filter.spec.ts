@@ -1,4 +1,3 @@
-import { jest } from '@jest/globals';
 import {
   ArgumentsHost,
   BadRequestException,
@@ -11,7 +10,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 
-import { GlobalExceptionFilter } from './global-exception.filter';
+import { GlobalExceptionFilter } from './global-exception.filter.js';
 
 describe('GlobalExceptionFilter', () => {
   let filter: GlobalExceptionFilter;

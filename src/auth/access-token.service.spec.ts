@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { JwtService } from '@nestjs/jwt';
-import { AccessTokenService } from './access-token.service';
+import { AccessTokenService } from './access-token.service.js';
 
 describe('AccessTokenService', () => {
   const secret = 'test-only-access-token-secret-32-characters';

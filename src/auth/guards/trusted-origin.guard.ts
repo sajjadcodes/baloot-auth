@@ -7,8 +7,9 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
-import type { PrismaService } from '../../database/prisma.service';
-import { CLIENT_ID_HEADER, CLIENT_ID_PATTERN } from '../auth.constants';
+import type { PrismaService } from '../../database/prisma.service.js';
+import { toVarchar } from '../../prisma/varchar.js';
+import { CLIENT_ID_HEADER, CLIENT_ID_PATTERN } from '../auth.constants.js';
 
 @Injectable()
 export class TrustedOriginGuard implements CanActivate {
@@ -25,6 +26,7 @@ export class TrustedOriginGuard implements CanActivate {
 
     if (
       !origin ||
+      origin.length > 512 ||
       !allowedOrigins.includes(origin) ||
       !clientId ||
       !CLIENT_ID_PATTERN.test(clientId)
@@ -32,16 +34,13 @@ export class TrustedOriginGuard implements CanActivate {
       throw new ForbiddenException('Untrusted client request.');
     }
 
-    const client = await this.prisma.client.findUnique({
-      where: { id: clientId },
-      select: {
-        status: true,
-        allowedOrigins: {
-          where: { origin },
-          select: { origin: true },
-        },
-      },
-    });
+    const client = await this.prisma.public.Client.include(
+      'allowedOrigins',
+      (allowedOrigins) =>
+        allowedOrigins.where({ origin: toVarchar(origin, 512) }),
+    )
+      .where({ id: clientId })
+      .first();
 
     if (
       !client ||

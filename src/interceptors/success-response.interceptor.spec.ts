@@ -1,5 +1,5 @@
 import { lastValueFrom, of } from 'rxjs';
-import { SuccessResponseInterceptor } from './success-response.interceptor';
+import { SuccessResponseInterceptor } from './success-response.interceptor.js';
 
 describe('SuccessResponseInterceptor', () => {
   it('wraps endpoint data in the stable success envelope', async () => {

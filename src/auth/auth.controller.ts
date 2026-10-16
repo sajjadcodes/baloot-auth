@@ -9,17 +9,17 @@ import {
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { AuthCookiesService } from './auth-cookies.service';
-import { AuthService } from './auth.service';
-import { LoginDto } from './dto/login.dto';
-import { RegisterDto } from './dto/register.dto';
-import { TrustedOriginGuard } from './guards/trusted-origin.guard';
+import { AuthCookiesService } from './auth-cookies.service.js';
+import { AuthService } from './auth.service.js';
+import { LoginDto } from './dto/login.dto.js';
+import { RegisterDto } from './dto/register.dto.js';
+import { TrustedOriginGuard } from './guards/trusted-origin.guard.js';
 import {
   AUTH_THROTTLE_WINDOW_MS,
   CLIENT_ID_HEADER,
   LOGIN_RATE_LIMIT,
   REGISTER_RATE_LIMIT,
-} from './auth.constants';
+} from './auth.constants.js';
 
 @ApiTags('Authentication')
 @Controller('auth')

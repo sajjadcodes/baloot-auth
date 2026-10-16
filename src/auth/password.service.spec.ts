@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { PasswordService } from './password.service';
+import { PasswordService } from './password.service.js';
 
 describe('PasswordService', () => {
   let passwordService: PasswordService;

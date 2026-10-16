@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { map, Observable } from 'rxjs';
-import type { SuccessResponse } from '../types/success-response.interface';
+import type { SuccessResponse } from '../types/success-response.interface.js';
 
 @Injectable()
 export class SuccessResponseInterceptor<T> implements NestInterceptor<

@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { RegisterDto } from './register.dto';
+import { RegisterDto } from './register.dto.js';
 
 describe('RegisterDto', () => {
   it('accepts a valid email and password', async () => {

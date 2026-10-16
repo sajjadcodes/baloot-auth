@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 import type { Response } from 'express';
-import { AuthCookiesService } from './auth-cookies.service';
-import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
+import { AuthCookiesService } from './auth-cookies.service.js';
+import { AuthController } from './auth.controller.js';
+import { AuthService } from './auth.service.js';
 
 describe('AuthController', () => {
   it('sets browser cookies and returns only public user information', async () => {

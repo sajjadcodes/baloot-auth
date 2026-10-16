@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { parseClientSeedConfig } from './client-seed-config';
+import { parseClientSeedConfig } from './client-seed-config.js';
 
 describe('parseClientSeedConfig', () => {
   const firstClientId = '00000000-0000-4000-8000-000000000001';

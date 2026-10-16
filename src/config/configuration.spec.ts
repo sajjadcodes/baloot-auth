@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { validateEnvironment } from './configuration';
+import { validateEnvironment } from './configuration.js';
 
 describe('validateEnvironment', () => {
   const databaseUrl =

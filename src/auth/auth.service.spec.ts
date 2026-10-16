@@ -1,9 +1,9 @@
 import 'reflect-metadata';
 import { ConflictException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { PrismaService } from '../database/prisma.service';
-import { AccessTokenService } from './access-token.service';
-import { AuthService } from './auth.service';
+import type { PrismaService } from '../database/prisma.service.js';
+import { AccessTokenService } from './access-token.service.js';
+import { AuthService } from './auth.service.js';
 
 describe('AuthService', () => {
   const user = { id: 'user-1', email: 'person@example.com' };
@@ -12,52 +12,62 @@ describe('AuthService', () => {
 
   let service: AuthService;
   let findUser: jest.Mock;
+  let whereUser: jest.Mock;
   let createSession: jest.Mock;
   let transaction: {
-    role: { upsert: jest.Mock };
-    user: { create: jest.Mock };
-    refreshSession: { create: jest.Mock };
+    orm: {
+      public: {
+        Role: { where: jest.Mock };
+        User: { create: jest.Mock };
+        UserRole: { create: jest.Mock };
+        RefreshSession: { create: jest.Mock };
+      };
+    };
   };
   let transact: jest.Mock;
   let hashPassword: jest.Mock;
   let verifyPassword: jest.Mock;
   let issueAccessToken: jest.Mock;
   let refreshSessionData:
-    { userId: string; tokenHash: string; expiresAt: Date } | undefined;
+    { userId: string; tokenHash: string; expiresAt: string } | undefined;
   let loginSessionData:
-    { userId: string; tokenHash: string; expiresAt: Date } | undefined;
+    { userId: string; tokenHash: string; expiresAt: string } | undefined;
 
   beforeEach(() => {
     jest.clearAllMocks();
     refreshSessionData = undefined;
     loginSessionData = undefined;
-    const upsertRole = jest.fn().mockResolvedValue(role);
+    const findRole = jest
+      .fn()
+      .mockReturnValue({ first: jest.fn().mockResolvedValue(role) });
     const createUser = jest.fn().mockResolvedValue(user);
     const createRefreshSession = jest
       .fn()
       .mockImplementation(
-        (input: {
-          data: { userId: string; tokenHash: string; expiresAt: Date };
-        }) => {
-          refreshSessionData = input.data;
+        (input: { userId: string; tokenHash: string; expiresAt: string }) => {
+          refreshSessionData = input;
           return Promise.resolve({});
         },
       );
     findUser = jest.fn();
+    whereUser = jest.fn().mockReturnValue({ first: findUser });
     createSession = jest
       .fn()
       .mockImplementation(
-        (input: {
-          data: { userId: string; tokenHash: string; expiresAt: Date };
-        }) => {
-          loginSessionData = input.data;
+        (input: { userId: string; tokenHash: string; expiresAt: string }) => {
+          loginSessionData = input;
           return Promise.resolve({});
         },
       );
     transaction = {
-      role: { upsert: upsertRole },
-      user: { create: createUser },
-      refreshSession: { create: createRefreshSession },
+      orm: {
+        public: {
+          Role: { where: findRole },
+          User: { create: createUser },
+          UserRole: { create: jest.fn().mockResolvedValue({}) },
+          RefreshSession: { create: createRefreshSession },
+        },
+      },
     };
     transact = jest.fn(
       (callback: (tx: typeof transaction) => Promise<unknown>) =>
@@ -69,9 +79,13 @@ describe('AuthService', () => {
 
     service = new AuthService(
       {
-        $transaction: transact,
-        user: { findUnique: findUser },
-        refreshSession: { create: createSession },
+        client: { transaction: transact },
+        public: {
+          User: {
+            where: whereUser,
+          },
+          RefreshSession: { create: createSession },
+        },
       } as unknown as PrismaService,
       {
         hash: hashPassword,
@@ -91,29 +105,26 @@ describe('AuthService', () => {
     );
 
     expect(hashPassword).toHaveBeenCalledWith('long password');
-    expect(transaction.role.upsert).toHaveBeenCalledWith({
-      where: { name: 'user' },
-      update: {},
-      create: { name: 'user' },
-      select: { id: true },
+    expect(transaction.orm.public.Role.where).toHaveBeenCalledWith({
+      name: 'user',
     });
-    expect(transaction.user.create).toHaveBeenCalledWith({
-      data: {
-        clientId,
-        email: 'person@example.com',
-        passwordHash: 'argon2-hash',
-        roles: { create: { role: { connect: { id: role.id } } } },
-      },
-      select: { id: true, email: true },
+    expect(transaction.orm.public.User.create).toHaveBeenCalledWith({
+      clientId,
+      email: 'person@example.com',
+      passwordHash: 'argon2-hash',
+    });
+    expect(transaction.orm.public.UserRole.create).toHaveBeenCalledWith({
+      userId: user.id,
+      roleId: role.id,
     });
     expect(refreshSessionData).toBeDefined();
     expect(refreshSessionData?.tokenHash).toMatch(/^[a-f0-9]{64}$/);
     expect(refreshSessionData?.tokenHash).not.toBe(result.refreshToken);
     expect(refreshSessionData?.userId).toBe(user.id);
-    expect(refreshSessionData?.expiresAt.getTime()).toBeGreaterThanOrEqual(
+    expect(Date.parse(refreshSessionData!.expiresAt)).toBeGreaterThanOrEqual(
       before + 2592000000,
     );
-    expect(refreshSessionData?.expiresAt.getTime()).toBeLessThanOrEqual(
+    expect(Date.parse(refreshSessionData!.expiresAt)).toBeLessThanOrEqual(
       Date.now() + 2592000000,
     );
     expect(typeof result.refreshToken).toBe('string');
@@ -128,8 +139,7 @@ describe('AuthService', () => {
   it('returns a generic conflict for duplicate registration', async () => {
     transact.mockRejectedValue(
       Object.assign(new Error('Unique constraint failed'), {
-        code: 'P2002',
-        clientVersion: '7.10.0',
+        code: '23505',
       }),
     );
 
@@ -165,17 +175,9 @@ describe('AuthService', () => {
       clientId,
     );
 
-    expect(findUser).toHaveBeenCalledWith({
-      where: {
-        clientId_email: { clientId, email: 'person@example.com' },
-      },
-      select: {
-        id: true,
-        email: true,
-        passwordHash: true,
-        status: true,
-        clientId: true,
-      },
+    expect(whereUser).toHaveBeenCalledWith({
+      clientId,
+      email: 'person@example.com',
     });
     expect(hashPassword).not.toHaveBeenCalled();
     expect(createSession).toHaveBeenCalledTimes(1);
@@ -183,7 +185,7 @@ describe('AuthService', () => {
     expect(loginSessionData?.userId).toBe(user.id);
     expect(loginSessionData?.tokenHash).toMatch(/^[a-f0-9]{64}$/);
     expect(loginSessionData?.tokenHash).not.toBe(result.refreshToken);
-    expect(loginSessionData?.expiresAt.getTime()).toBeGreaterThanOrEqual(
+    expect(Date.parse(loginSessionData!.expiresAt)).toBeGreaterThanOrEqual(
       before + 2592000000,
     );
     expect(issueAccessToken).toHaveBeenCalledWith(user.id, clientId);

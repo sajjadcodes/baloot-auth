@@ -6,9 +6,10 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { PrismaService } from '../database/prisma.service';
-import { AccessTokenService } from './access-token.service';
-import { PasswordService } from './password.service';
+import type { PrismaService } from '../database/prisma.service.js';
+import { toVarchar } from '../prisma/varchar.js';
+import { AccessTokenService } from './access-token.service.js';
+import { PasswordService } from './password.service.js';
 
 export interface RegistrationResult {
   user: {
@@ -44,56 +45,52 @@ export class AuthService {
         this.config.getOrThrow<number>('REFRESH_SESSION_TTL_SECONDS') * 1000,
     );
 
-    let user: RegistrationResult['user'];
-
     try {
-      user = await this.prisma.$transaction(async (transaction) => {
-        const role = await transaction.role.upsert({
-          where: { name: 'user' },
-          update: {},
-          create: { name: 'user' },
-          select: { id: true },
+      const user = await this.prisma.client.transaction(async (transaction) => {
+        const role = await transaction.orm.public.Role.where({
+          name: toVarchar('user', 64),
+        }).first();
+
+        if (!role) {
+          throw new Error(
+            'The default user role is missing; run pnpm db:seed.',
+          );
+        }
+
+        const createdUser = await transaction.orm.public.User.create({
+          clientId,
+          email: toVarchar(normalizedEmail, 320),
+          passwordHash: toVarchar(passwordHash, 255),
         });
 
-        const createdUser = await transaction.user.create({
-          data: {
-            clientId,
-            email: normalizedEmail,
-            passwordHash,
-            roles: {
-              create: {
-                role: { connect: { id: role.id } },
-              },
-            },
-          },
-          select: { id: true, email: true },
+        await transaction.orm.public.UserRole.create({
+          userId: createdUser.id,
+          roleId: role.id,
         });
 
-        await transaction.refreshSession.create({
-          data: {
-            userId: createdUser.id,
-            tokenHash,
-            expiresAt,
-          },
+        await transaction.orm.public.RefreshSession.create({
+          userId: createdUser.id,
+          tokenHash: toVarchar(tokenHash, 128),
+          expiresAt: expiresAt.toISOString(),
         });
 
-        return createdUser;
+        return { id: createdUser.id, email: createdUser.email };
       });
+
+      const accessToken = await this.accessTokens.issue(user.id, clientId);
+
+      return {
+        user,
+        accessToken,
+        refreshToken,
+      };
     } catch (error) {
-      if (isUniqueConstraintError(error)) {
+      if (isPostgresUniqueConstraintViolation(error)) {
         throw new ConflictException('Registration could not be completed.');
       }
 
       throw error;
     }
-
-    const accessToken = await this.accessTokens.issue(user.id, clientId);
-
-    return {
-      user,
-      accessToken,
-      refreshToken,
-    };
   }
 
   async login(
@@ -102,16 +99,10 @@ export class AuthService {
     clientId: string,
   ): Promise<LoginResult> {
     const normalizedEmail = email.trim().toLowerCase();
-    const user = await this.prisma.user.findUnique({
-      where: { clientId_email: { clientId, email: normalizedEmail } },
-      select: {
-        id: true,
-        email: true,
-        passwordHash: true,
-        status: true,
-        clientId: true,
-      },
-    });
+    const user = await this.prisma.public.User.where({
+      clientId,
+      email: toVarchar(normalizedEmail, 320),
+    }).first();
 
     if (
       !user ||
@@ -128,12 +119,10 @@ export class AuthService {
         this.config.getOrThrow<number>('REFRESH_SESSION_TTL_SECONDS') * 1000,
     );
 
-    await this.prisma.refreshSession.create({
-      data: {
-        userId: user.id,
-        tokenHash,
-        expiresAt,
-      },
+    await this.prisma.public.RefreshSession.create({
+      userId: user.id,
+      tokenHash: toVarchar(tokenHash, 128),
+      expiresAt: expiresAt.toISOString(),
     });
 
     const accessToken = await this.accessTokens.issue(user.id, user.clientId);
@@ -146,13 +135,11 @@ export class AuthService {
   }
 }
 
-function isUniqueConstraintError(error: unknown): boolean {
+function isPostgresUniqueConstraintViolation(error: unknown): boolean {
   return (
     typeof error === 'object' &&
     error !== null &&
     'code' in error &&
-    error.code === 'P2002' &&
-    'clientVersion' in error &&
-    typeof error.clientVersion === 'string'
+    error.code === '23505'
   );
 }

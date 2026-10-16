@@ -4,7 +4,7 @@ import {
   ARGON2_MEMORY_COST_KIB,
   ARGON2_PARALLELISM,
   ARGON2_TIME_COST,
-} from './auth.constants';
+} from './auth.constants.js';
 
 @Injectable()
 export class PasswordService {

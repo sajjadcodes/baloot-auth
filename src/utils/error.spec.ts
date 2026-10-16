@@ -3,7 +3,7 @@ import {
   HttpException,
   NotFoundException,
 } from '@nestjs/common';
-import { getErrorDetails } from './error';
+import { getErrorDetails } from './error.js';
 
 describe('getErrorDetails', () => {
   it('uses a default message for a known HTTP status', () => {

@@ -1,7 +1,9 @@
 import 'dotenv/config';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../src/generated/prisma/client';
-import { parseClientSeedConfig } from '../src/database/client-seed-config';
+import postgres from '@prisma/orm-postgres/runtime';
+import { parseClientSeedConfig } from '../src/database/client-seed-config.js';
+import type { Contract } from '../src/prisma/contract.d.js';
+import contractJson from '../src/prisma/contract.json' with { type: 'json' };
+import { toVarchar } from '../src/prisma/varchar.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -13,36 +15,46 @@ const clients = parseClientSeedConfig(
   process.env.SEED_CLIENTS_JSON,
   process.env.CORS_ORIGINS,
 );
-const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: databaseUrl }),
+const prisma = postgres<Contract>({
+  contractJson,
+  url: databaseUrl,
 });
 
 async function seed(): Promise<void> {
-  for (const client of clients) {
-    await prisma.client.upsert({
-      where: { id: client.id },
-      update: { name: client.name },
-      create: {
-        id: client.id,
-        name: client.name,
-      },
-    });
+  const models = prisma.orm.public;
 
-    for (const origin of client.origins) {
-      await prisma.clientAllowedOrigin.upsert({
-        where: {
-          clientId_origin: {
-            clientId: client.id,
-            origin,
-          },
-        },
-        update: {},
-        create: {
-          clientId: client.id,
-          origin,
-        },
+  for (const client of clients) {
+    const existingClient = await models.Client.where({ id: client.id }).first();
+    if (existingClient) {
+      await models.Client.where({ id: client.id }).update({
+        name: toVarchar(client.name, 128),
+      });
+    } else {
+      await models.Client.create({
+        id: client.id,
+        name: toVarchar(client.name, 128),
       });
     }
+
+    for (const origin of client.origins) {
+      const existingOrigin = await models.ClientAllowedOrigin.where({
+        clientId: client.id,
+        origin: toVarchar(origin, 512),
+      }).first();
+      if (!existingOrigin) {
+        await models.ClientAllowedOrigin.create({
+          clientId: client.id,
+          origin: toVarchar(origin, 512),
+        });
+      }
+    }
+  }
+
+  const userRole = await models.Role.where({
+    name: toVarchar('user', 64),
+  }).first();
+  if (!userRole) {
+    await models.Role.create({ name: toVarchar('user', 64) });
   }
 }
 
@@ -52,5 +64,5 @@ seed()
     process.exitCode = 1;
   })
   .finally(async () => {
-    await prisma.$disconnect();
+    await prisma.close();
   });

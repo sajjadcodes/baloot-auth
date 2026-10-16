@@ -2,28 +2,28 @@
 
 **Reusable authentication and basic authorization for any application.**
 
-Baloot Auth is a standalone authentication service built with NestJS, TypeScript, PostgreSQL, and Prisma 7. It provides a documented REST API that applications can use for user authentication, session management, and basic role-based authorization.
+Baloot Auth is a standalone authentication service built with NestJS, TypeScript, PostgreSQL, and Prisma ORM 8. It provides a documented REST API that applications can use for user authentication, session management, and basic role-based authorization.
 
 It is designed to remain independent of any specific product, company, or business domain.
 
 ## Implementation Status
 
-The current foundation includes validated startup configuration, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, a Prisma 7 PostgreSQL schema and adapter, Argon2id password hashing, short-lived JWT access-token issuance with a Passport JWT strategy, and a globally applied success-response interceptor and exception filter. Application clients have registered origins; users, email uniqueness, authentication requests, and access tokens are scoped to one client. The root health response and `POST /auth/register` and `POST /auth/login` are implemented. Refresh, logout, current-user, email verification, password reset, and authorization endpoints are not yet available.
+The current foundation includes validated startup configuration, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, a Prisma ORM 8 PostgreSQL contract and runtime, Argon2id password hashing, short-lived JWT access-token issuance with a Passport JWT strategy, and a globally applied success-response interceptor and exception filter. Application clients have registered origins; users, email uniqueness, authentication requests, and access tokens are scoped to one client. The root health response and `POST /auth/register` and `POST /auth/login` are implemented. Refresh, logout, current-user, email verification, password reset, and authorization endpoints are not yet available.
 
 HTTP responses use a globally applied envelope: successful responses contain `success`, the HTTP `code`, a `message`, and endpoint `data`; errors contain `success: false`, the HTTP `code`, and a safe `message`. Unexpected server errors are logged server-side without stack traces or exception messages and returned to clients as a generic internal-server-error message.
 
 ## Technology Stack
 
-| Technology       | Purpose                            |
-| ---------------- | ---------------------------------- |
-| NestJS           | Backend framework                  |
-| TypeScript       | Application language               |
-| PostgreSQL       | Persistent data storage            |
-| Prisma 7         | ORM and database schema management |
-| Prisma Migrate   | Database migration tooling         |
-| JWT              | Access-token format                |
-| HttpOnly cookies | Browser token transport            |
-| Swagger/OpenAPI  | Interactive API documentation      |
+| Technology       | Purpose                           |
+| ---------------- | --------------------------------- |
+| NestJS           | Backend framework                 |
+| TypeScript       | Application language              |
+| PostgreSQL       | Persistent data storage           |
+| Prisma ORM 8     | PostgreSQL contract and runtime   |
+| Prisma CLI       | Contract authoring and migrations |
+| JWT              | Access-token format               |
+| HttpOnly cookies | Browser token transport           |
+| Swagger/OpenAPI  | Interactive API documentation     |
 
 ## Repository Structure
 
@@ -31,9 +31,6 @@ The project follows a feature-oriented NestJS architecture:
 
 ```text
 baloot-auth/
-├── prisma/
-│   ├── schema.prisma
-│   └── migrations/
 ├── src/
 │   ├── main.ts
 │   ├── app.module.ts
@@ -51,10 +48,16 @@ baloot-auth/
 │   ├── database/
 │   │   ├── prisma.module.ts
 │   │   └── prisma.service.ts
+│   ├── prisma/
+│   │   ├── contract.prisma
+│   │   ├── contract.json
+│   │   └── contract.d.ts
 │   ├── filters/
 │   ├── interceptors/
 │   ├── types/
 │   └── utils/
+├── prisma/
+│   └── seed.ts
 ├── prisma.config.ts
 ├── .env.example
 ├── .gitignore
@@ -73,6 +76,7 @@ The structure may evolve as features are implemented. Each service, controller, 
 - Node.js and a compatible package manager.
 - PostgreSQL.
 - The project dependencies installed from `package.json`.
+- Prisma ORM 8 is currently installed as a release candidate.
 
 ### Installation
 
@@ -84,15 +88,15 @@ pnpm install
 
 Copy `.env.example` to `.env`, then set `DATABASE_URL` to a reachable PostgreSQL database and replace `JWT_ACCESS_SECRET` with a cryptographically random secret of at least 32 characters. `JWT_ACCESS_TTL_SECONDS` must be between 60 and 3600 seconds and defaults to 900. `REFRESH_SESSION_TTL_SECONDS` must be between 3600 and 7776000 seconds and defaults to 2592000. `AUTH_COOKIE_SAME_SITE` accepts `lax`, `strict`, or `none`; `none` is allowed only in production, where cookies are Secure. `CORS_ORIGINS` is a comma-separated list of exact HTTP(S) origins; wildcard origins and paths are not accepted. Provision application clients using `SEED_CLIENTS_JSON` in the untracked `.env`; this JSON array keeps each client's ID, name, and origins together. Keep real deployment origins and client IDs out of committed files. The application validates runtime configuration and connects to PostgreSQL before listening.
 
-Generate the Prisma Client and start the development server:
+Emit the Prisma contract artifacts and start the development server:
 
 ```bash
-pnpm db:generate
+pnpm contract:emit
 pnpm db:seed
 pnpm start:dev
 ```
 
-After applying the approved database migration, configure `SEED_CLIENTS_JSON` and `CORS_ORIGINS` in `.env`, then run `pnpm db:seed` to provision the client records. Each client needs a stable UUID; configure that same public ID in its frontend. Client IDs identify an application but are not secrets. The seed is idempotent and upserts origins without removing existing ones. Do not commit real `.env` values. The Prisma schema has not been migrated to the database. Database migrations remain under maintainer control and must not be generated or applied without explicit approval.
+After the maintainer has provisioned the database from the contract, configure `SEED_CLIENTS_JSON` and `CORS_ORIGINS` in `.env`, then run `pnpm db:seed` to provision the client records and the default `user` role required for registration. Each client needs a stable UUID; configure that same public ID in its frontend. Client IDs identify an application but are not secrets. The seed updates existing client names and adds missing client/origin/role records without removing existing origins. Do not commit real `.env` values. The database has not been initialized from the contract. Database migrations remain under maintainer control and must not be created, planned, or applied without explicit approval.
 
 For example, keep the JSON in the local `.env` as a single-line value (replace example values with deployment configuration):
 
@@ -217,9 +221,9 @@ A valid identity does not automatically authorize access to every resource.
 
 ## Database and Migrations
 
-Baloot Auth uses PostgreSQL and Prisma 7.
+Baloot Auth uses PostgreSQL and Prisma ORM 8.
 
-The Prisma schema is maintained in `prisma/schema.prisma`, and Prisma configuration is maintained according to the installed Prisma 7 conventions.
+The data contract is maintained in `src/prisma/contract.prisma`. After changing it, run `pnpm contract:emit` and commit the updated `contract.json` and `contract.d.ts` artifacts with the source contract. The Nest service uses the Prisma ORM 8 PostgreSQL runtime; it does not use Prisma 7's generated `PrismaClient` or driver adapter.
 
 **Database migrations are controlled by the project maintainer.**
 
@@ -227,9 +231,9 @@ AI coding agents and automated development workflows must not create, apply, run
 
 When a schema change is needed:
 
-1. Update the Prisma schema.
+1. Update the Prisma data contract.
 2. Explain the intended database changes and their impact.
-3. Propose the required migration command.
+3. Propose the required Prisma ORM 8 migration planning and apply commands.
 4. Wait for explicit confirmation before creating or executing the migration.
 
 Do not bypass this process through scripts or alternative database tools.

@@ -3,18 +3,18 @@ import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { AuthController } from './auth.controller';
-import { AuthCookiesService } from './auth-cookies.service';
-import { AccessTokenService } from './access-token.service';
-import { AuthService } from './auth.service';
-import { TrustedOriginGuard } from './guards/trusted-origin.guard';
-import { PasswordService } from './password.service';
-import { JwtStrategy } from './strategies/jwt.strategy';
+import { AuthController } from './auth.controller.js';
+import { AuthCookiesService } from './auth-cookies.service.js';
+import { AccessTokenService } from './access-token.service.js';
+import { AuthService } from './auth.service.js';
+import { TrustedOriginGuard } from './guards/trusted-origin.guard.js';
+import { PasswordService } from './password.service.js';
+import { JwtStrategy } from './strategies/jwt.strategy.js';
 import {
   ACCESS_TOKEN_ALGORITHM,
   AUTH_GLOBAL_RATE_LIMIT,
   AUTH_THROTTLE_WINDOW_MS,
-} from './auth.constants';
+} from './auth.constants.js';
 
 @Module({
   imports: [

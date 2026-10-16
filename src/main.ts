@@ -3,9 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
-import { AppModule } from './app.module';
-import { GlobalExceptionFilter } from './filters/global-exception.filter';
-import { SuccessResponseInterceptor } from './interceptors/success-response.interceptor';
+import { AppModule } from './app.module.js';
+import { GlobalExceptionFilter } from './filters/global-exception.filter.js';
+import { SuccessResponseInterceptor } from './interceptors/success-response.interceptor.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

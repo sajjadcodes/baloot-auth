@@ -1,9 +1,10 @@
 {
   "compilerOptions": {
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
+    "module": "preserve",
+    "moduleResolution": "bundler",
     "types": ["node", "jest"],
     "resolvePackageJsonExports": true,
+    "resolveJsonModule": true,
     "esModuleInterop": true,
     "isolatedModules": true,
     "declaration": true,

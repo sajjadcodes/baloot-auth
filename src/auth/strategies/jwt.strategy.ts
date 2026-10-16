@@ -7,7 +7,7 @@ import {
   ACCESS_TOKEN_ALGORITHM,
   ACCESS_TOKEN_COOKIE,
   BEARER_TOKEN_PATTERN,
-} from '../auth.constants';
+} from '../auth.constants.js';
 
 export interface AuthenticatedUser {
   userId: string;

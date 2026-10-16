@@ -2,8 +2,8 @@ import 'reflect-metadata';
 import { ConfigService } from '@nestjs/config';
 import { UnauthorizedException } from '@nestjs/common';
 import type { Request } from 'express';
-import { ACCESS_TOKEN_COOKIE } from '../auth.constants';
-import { extractAccessToken, JwtStrategy } from './jwt.strategy';
+import { ACCESS_TOKEN_COOKIE } from '../auth.constants.js';
+import { extractAccessToken, JwtStrategy } from './jwt.strategy.js';
 
 describe('JwtStrategy', () => {
   const secret = 'test-only-access-token-secret-32-characters';

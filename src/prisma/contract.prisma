@@ -1,0 +1,88 @@
+// use prisma-8
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum ClientStatus {
+  ACTIVE
+  DISABLED
+}
+
+model Client {
+  id             Uuid                       @id @default(uuid())
+  name           VarChar(128)
+  status         ClientStatus               @default(ACTIVE)
+  createdAt      TimestamptzString          @default(now()) @map("created_at")
+  updatedAt      temporal.updatedAtString() @map("updated_at")
+  allowedOrigins ClientAllowedOrigin[]
+  users          User[]
+
+  @@map("clients")
+}
+
+model ClientAllowedOrigin {
+  clientId  Uuid              @map("client_id")
+  origin    VarChar(512)
+  createdAt TimestamptzString @default(now()) @map("created_at")
+  client    Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@id([clientId, origin])
+  @@map("client_allowed_origins")
+}
+
+model User {
+  id              Uuid                       @id @default(uuid())
+  clientId        Uuid                       @map("client_id")
+  email           VarChar(320)
+  passwordHash    VarChar(255)               @map("password_hash")
+  emailVerifiedAt TimestamptzString?         @map("email_verified_at")
+  status          UserStatus                 @default(ACTIVE)
+  createdAt       TimestamptzString          @default(now()) @map("created_at")
+  updatedAt       temporal.updatedAtString() @map("updated_at")
+  client          Client                     @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  roles           UserRole[]
+  refreshSessions RefreshSession[]
+
+  @@unique([clientId, email])
+  @@map("users")
+}
+
+model Role {
+  id          Uuid                       @id @default(uuid())
+  name        VarChar(64)                @unique
+  description VarChar(255)?
+  createdAt   TimestamptzString          @default(now()) @map("created_at")
+  updatedAt   temporal.updatedAtString() @map("updated_at")
+  users       UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  userId     Uuid              @map("user_id")
+  roleId     Uuid              @map("role_id")
+  assignedAt TimestamptzString @default(now()) @map("assigned_at")
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role              @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+model RefreshSession {
+  id        Uuid                       @id @default(uuid())
+  userId    Uuid                       @map("user_id")
+  tokenHash VarChar(128)               @unique @map("token_hash")
+  expiresAt TimestamptzString          @map("expires_at")
+  revokedAt TimestamptzString?         @map("revoked_at")
+  userAgent VarChar(512)?              @map("user_agent")
+  createdAt TimestamptzString          @default(now()) @map("created_at")
+  updatedAt temporal.updatedAtString() @map("updated_at")
+  user      User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("refresh_sessions")
+}
