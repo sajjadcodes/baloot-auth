@@ -3,8 +3,8 @@ import {
   IsArray,
   IsIn,
   IsInt,
-  MinLength,
   IsString,
+  MinLength,
   IsUrl,
   Max,
   Min,
@@ -39,6 +39,15 @@ export class EnvironmentVariables {
   @Max(3600)
   JWT_ACCESS_TTL_SECONDS = 900;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(3600)
+  @Max(7776000)
+  REFRESH_SESSION_TTL_SECONDS = 2592000;
+
+  @IsIn(['lax', 'strict', 'none'])
+  AUTH_COOKIE_SAME_SITE: 'lax' | 'strict' | 'none' = 'lax';
+
   @Transform(({ value }) =>
     value == null || value === ''
       ? []
@@ -71,6 +80,15 @@ export function validateEnvironment(
     );
     throw new Error(
       `Invalid environment configuration: ${messages.join('; ')}`,
+    );
+  }
+
+  if (
+    environment.AUTH_COOKIE_SAME_SITE === 'none' &&
+    environment.NODE_ENV !== 'production'
+  ) {
+    throw new Error(
+      'Invalid environment configuration: SameSite=None cookies require production HTTPS.',
     );
   }
 

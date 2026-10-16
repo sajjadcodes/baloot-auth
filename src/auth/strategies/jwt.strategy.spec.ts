@@ -1,7 +1,9 @@
 import 'reflect-metadata';
 import { ConfigService } from '@nestjs/config';
 import { UnauthorizedException } from '@nestjs/common';
-import { JwtStrategy } from './jwt.strategy';
+import type { Request } from 'express';
+import { ACCESS_TOKEN_COOKIE } from '../auth.constants';
+import { extractAccessToken, JwtStrategy } from './jwt.strategy';
 
 describe('JwtStrategy', () => {
   const secret = 'test-only-access-token-secret-32-characters';
@@ -24,4 +26,25 @@ describe('JwtStrategy', () => {
       expect(() => strategy.validate(payload)).toThrow(UnauthorizedException);
     },
   );
+
+  it('extracts access tokens from the HttpOnly cookie before a bearer header', () => {
+    const request = {
+      cookies: { [ACCESS_TOKEN_COOKIE]: 'cookie-token' },
+      headers: { authorization: 'Bearer header-token' },
+    } as unknown as Request;
+
+    expect(extractAccessToken(request)).toBe('cookie-token');
+  });
+
+  it('supports bearer tokens when no access cookie is present', () => {
+    const request = {
+      headers: { authorization: 'Bearer header-token' },
+    } as unknown as Request;
+
+    expect(extractAccessToken(request)).toBe('header-token');
+  });
+
+  it('returns null when neither cookie nor bearer token is present', () => {
+    expect(extractAccessToken({ headers: {} } as Request)).toBeNull();
+  });
 });

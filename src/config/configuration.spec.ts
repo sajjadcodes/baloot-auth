@@ -15,6 +15,8 @@ describe('validateEnvironment', () => {
     expect(environment.NODE_ENV).toBe('development');
     expect(environment.PORT).toBe(3000);
     expect(environment.JWT_ACCESS_TTL_SECONDS).toBe(900);
+    expect(environment.REFRESH_SESSION_TTL_SECONDS).toBe(2592000);
+    expect(environment.AUTH_COOKIE_SAME_SITE).toBe('lax');
     expect(environment.CORS_ORIGINS).toEqual([]);
   });
 
@@ -25,11 +27,15 @@ describe('validateEnvironment', () => {
       DATABASE_URL: databaseUrl,
       JWT_ACCESS_SECRET: accessSecret,
       JWT_ACCESS_TTL_SECONDS: '600',
+      REFRESH_SESSION_TTL_SECONDS: '604800',
+      AUTH_COOKIE_SAME_SITE: 'strict',
       CORS_ORIGINS: 'http://localhost:5173,https://app.example.com',
     });
 
     expect(environment.PORT).toBe(4000);
     expect(environment.JWT_ACCESS_TTL_SECONDS).toBe(600);
+    expect(environment.REFRESH_SESSION_TTL_SECONDS).toBe(604800);
+    expect(environment.AUTH_COOKIE_SAME_SITE).toBe('strict');
     expect(environment.CORS_ORIGINS).toEqual([
       'http://localhost:5173',
       'https://app.example.com',
@@ -79,5 +85,15 @@ describe('validateEnvironment', () => {
         CORS_ORIGINS: 'https://app.example.com/path',
       }),
     ).toThrow('CORS_ORIGINS must contain only HTTP(S) origins without paths');
+  });
+
+  it('requires production mode for SameSite=None cookies', () => {
+    expect(() =>
+      validateEnvironment({
+        DATABASE_URL: databaseUrl,
+        JWT_ACCESS_SECRET: accessSecret,
+        AUTH_COOKIE_SAME_SITE: 'none',
+      }),
+    ).toThrow('SameSite=None cookies require production HTTPS');
   });
 });

@@ -8,9 +8,9 @@ It is designed to remain independent of any specific product, company, or busine
 
 ## Implementation Status
 
-The current foundation includes startup environment validation, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, the initial Prisma 7 PostgreSQL schema and adapter, an Argon2id password-hashing service, and short-lived JWT access-token issuance with a Passport JWT strategy. Registration, login, refresh sessions, and authorization endpoints remain planned and are not yet available.
+The current foundation includes validated startup configuration, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, the initial Prisma 7 PostgreSQL schema and adapter, Argon2id password hashing, short-lived JWT access-token issuance with a Passport JWT strategy, and a globally applied success-response interceptor and exception filter. The root health response and `POST /auth/register` are implemented. Login, refresh, logout, current-user, email verification, password reset, and authorization endpoints are not yet available.
 
-HTTP responses use a consistent envelope: successful responses contain `success`, the HTTP `code`, a `message`, and endpoint `data`; errors contain `success: false`, the HTTP `code`, and a safe `message`. Unexpected server errors are logged server-side and returned to clients as a generic internal-server-error message.
+HTTP responses use a globally applied envelope: successful responses contain `success`, the HTTP `code`, a `message`, and endpoint `data`; errors contain `success: false`, the HTTP `code`, and a safe `message`. Unexpected server errors are logged server-side without stack traces or exception messages and returned to clients as a generic internal-server-error message.
 
 ## Technology Stack
 
@@ -37,27 +37,24 @@ baloot-auth/
 ├── src/
 │   ├── main.ts
 │   ├── app.module.ts
-│   ├── config/
-│   ├── common/
-│   ├── database/
-│   │   ├── prisma.module.ts
-│   │   └── prisma.service.ts
 │   ├── auth/
 │   │   ├── auth.module.ts
 │   │   ├── auth.controller.ts
 │   │   ├── auth.service.ts
+│   │   ├── auth-cookies.service.ts
+│   │   ├── access-token.service.ts
+│   │   ├── password.service.ts
 │   │   ├── dto/
 │   │   ├── guards/
 │   │   └── strategies/
-│   ├── users/
-│   ├── roles/
-│   ├── sessions/
-│   ├── email-verification/
-│   ├── password-reset/
-│   └── health/
-├── test/
-│   ├── unit/
-│   └── integration/
+│   ├── config/
+│   ├── database/
+│   │   ├── prisma.module.ts
+│   │   └── prisma.service.ts
+│   ├── filters/
+│   ├── interceptors/
+│   ├── types/
+│   └── utils/
 ├── prisma.config.ts
 ├── .env.example
 ├── .gitignore
@@ -67,7 +64,7 @@ baloot-auth/
 └── tsconfig.json
 ```
 
-The structure may evolve as the service develops. Some directories will be introduced only when their corresponding features are implemented.
+The structure may evolve as features are implemented. Each service, controller, and helper has colocated unit tests (for example, `auth.service.ts` and `auth.service.spec.ts`). Tests are run with `pnpm test -- --runInBand`. End-to-end and integration tests are currently out of scope.
 
 ## Getting Started
 
@@ -85,7 +82,7 @@ Install dependencies with pnpm:
 pnpm install
 ```
 
-Copy `.env.example` to `.env`, then set `DATABASE_URL` to a reachable PostgreSQL database and replace `JWT_ACCESS_SECRET` with a cryptographically random secret of at least 32 characters. `JWT_ACCESS_TTL_SECONDS` must be between 60 and 3600 seconds and defaults to 900. `CORS_ORIGINS` is a comma-separated list of exact HTTP(S) origins; wildcard origins and paths are not accepted. The application validates these values at startup and connects to PostgreSQL before listening.
+Copy `.env.example` to `.env`, then set `DATABASE_URL` to a reachable PostgreSQL database and replace `JWT_ACCESS_SECRET` with a cryptographically random secret of at least 32 characters. `JWT_ACCESS_TTL_SECONDS` must be between 60 and 3600 seconds and defaults to 900. `REFRESH_SESSION_TTL_SECONDS` must be between 3600 and 7776000 seconds and defaults to 2592000. `AUTH_COOKIE_SAME_SITE` accepts `lax`, `strict`, or `none`; `none` is allowed only in production, where cookies are Secure. `CORS_ORIGINS` is a comma-separated list of exact HTTP(S) origins; wildcard origins and paths are not accepted. The application validates these values at startup and connects to PostgreSQL before listening.
 
 Generate the Prisma Client and start the development server:
 
@@ -98,9 +95,17 @@ The Prisma schema has not been migrated to the database. Database migrations rem
 
 ## JWT Access-Token Foundation
 
-The auth module issues HS256 access tokens with a configurable lifetime of 60–3600 seconds (900 seconds by default). The Passport JWT strategy extracts bearer tokens from the `Authorization` header, verifies their signature and expiration, and maps a valid `sub` claim to `request.user.userId`. No protected routes currently consume this strategy; authentication endpoints remain planned.
+The auth module issues HS256 access tokens with a configurable lifetime of 60–3600 seconds (900 seconds by default). The Passport JWT strategy extracts access tokens from the HttpOnly access cookie or, for non-browser clients, the `Authorization: Bearer` header; it verifies signature and expiration and maps a valid `sub` claim to `request.user.userId`.
 
 `JWT_ACCESS_SECRET` must be a private, cryptographically random value with at least 32 characters. Never commit or log the production secret.
+
+## Registration
+
+`POST /auth/register` accepts JSON containing `email` and `password`. Email is normalized to lowercase; passwords must be 12–128 characters. The service assigns the `user` role server-side, stores an Argon2id password hash and a SHA-256 hash of a random refresh token in the same database transaction, and rate-limits registration to five requests per minute per client.
+
+On success, the response contains only the public user ID and email inside the standard response envelope. The access and refresh tokens are set only as HttpOnly cookies. The access cookie uses `/`; the refresh cookie is scoped to `/auth`. Both are host-only, and use the configured SameSite policy and expiry. Production cookies are Secure. Registration requires an `Origin` header exactly matching one of `CORS_ORIGINS`.
+
+The `/auth/refresh`, `/auth/login`, and `/auth/logout` endpoints are not implemented yet, so refresh sessions created during registration cannot yet be rotated or revoked through the API.
 
 ## API Documentation
 
@@ -112,28 +117,30 @@ When the service is running locally, interactive API documentation is available 
 
 The actual host and port depend on the application configuration.
 
-Swagger documents available endpoints, request DTOs, response schemas, status codes, and authentication requirements.
+Swagger documents implemented operations and request DTOs. Endpoint operation summaries and DTO property decorators are used; API response decorators are intentionally not used.
+
+The root `GET /` and `POST /auth/register` endpoints are currently implemented. Their successful results are wrapped in the standard response envelope.
 
 ## API Reference
 
-The following endpoints define the planned authentication API. Availability depends on the implemented version.
+The authentication endpoint status is:
 
-| Method | Endpoint                | Purpose                                 |
-| ------ | ----------------------- | --------------------------------------- |
-| `POST` | `/auth/register`        | Register a user                         |
-| `POST` | `/auth/login`           | Authenticate a user                     |
-| `POST` | `/auth/refresh`         | Refresh and rotate tokens               |
-| `POST` | `/auth/logout`          | Revoke a session and clear cookies      |
-| `GET`  | `/auth/me`              | Retrieve the current user's information |
-| `POST` | `/auth/verify-email`    | Verify an email address                 |
-| `POST` | `/auth/forgot-password` | Request a password reset                |
-| `POST` | `/auth/reset-password`  | Reset a password                        |
+| Method | Endpoint                | Purpose                                                     |
+| ------ | ----------------------- | ----------------------------------------------------------- |
+| `POST` | `/auth/register`        | Implemented: register a user and set authentication cookies |
+| `POST` | `/auth/login`           | Planned: authenticate a user                                |
+| `POST` | `/auth/refresh`         | Planned: refresh and rotate tokens                          |
+| `POST` | `/auth/logout`          | Planned: revoke a session and clear cookies                 |
+| `GET`  | `/auth/me`              | Planned: retrieve the authenticated user's information      |
+| `POST` | `/auth/verify-email`    | Planned: verify an email address                            |
+| `POST` | `/auth/forgot-password` | Planned: request a password reset                           |
+| `POST` | `/auth/reset-password`  | Planned: reset a password                                   |
 
 Refer to Swagger for the exact request formats, response contracts, validation requirements, and error codes.
 
-## Planned Browser Authentication
+## Browser Authentication
 
-When browser authentication is implemented, both access and refresh tokens must use HttpOnly cookies.
+Browser registration sets both access and refresh tokens as HttpOnly cookies.
 
 Browser clients must not read or manually store these tokens in JavaScript.
 

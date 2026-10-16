@@ -2,7 +2,12 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { AuthController } from './auth.controller';
+import { AuthCookiesService } from './auth-cookies.service';
 import { AccessTokenService } from './access-token.service';
+import { AuthService } from './auth.service';
+import { TrustedOriginGuard } from './guards/trusted-origin.guard';
 import { PasswordService } from './password.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
@@ -19,8 +24,24 @@ import { JwtStrategy } from './strategies/jwt.strategy';
       }),
     }),
     PassportModule.register({ defaultStrategy: 'jwt' }),
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]),
   ],
-  providers: [AccessTokenService, JwtStrategy, PasswordService],
-  exports: [AccessTokenService, JwtModule, PassportModule, PasswordService],
+  controllers: [AuthController],
+  providers: [
+    AccessTokenService,
+    AuthCookiesService,
+    AuthService,
+    JwtStrategy,
+    PasswordService,
+    TrustedOriginGuard,
+  ],
+  exports: [
+    AccessTokenService,
+    AuthCookiesService,
+    AuthService,
+    JwtModule,
+    PassportModule,
+    PasswordService,
+  ],
 })
 export class AuthModule {}
