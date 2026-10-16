@@ -1,11 +1,24 @@
 import 'reflect-metadata';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
 import type { Request, Response } from 'express';
 import { REFRESH_TOKEN_COOKIE } from './auth.constants.js';
 import { AuthCookiesService } from './auth-cookies.service.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
+import { TrustedOriginGuard } from './guards/trusted-origin.guard.js';
 
 describe('AuthController', () => {
+  it('requires trusted-origin validation on every state-changing auth route', () => {
+    for (const method of ['register', 'login', 'refresh', 'logout'] as const) {
+      const guards = Reflect.getMetadata(
+        GUARDS_METADATA,
+        AuthController.prototype[method],
+      );
+
+      expect(guards).toContain(TrustedOriginGuard);
+    }
+  });
+
   it('sets browser cookies and returns only public user information', async () => {
     const result = {
       user: { id: 'user-1', email: 'person@example.com' },

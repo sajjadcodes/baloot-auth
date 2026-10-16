@@ -115,9 +115,9 @@ The auth module issues HS256 access tokens with a configurable lifetime of 60–
 
 `POST /auth/register` accepts JSON containing `email` and `password` and requires the `X-Client-Id` header containing the UUID of an active registered client. This ID is a public frontend configuration value, not a secret or cookie. The request origin must be allowed globally in `CORS_ORIGINS` and assigned to that client in `client_allowed_origins`. Email is normalized to lowercase; passwords must be 12–128 characters. Email uniqueness is scoped to the client, so the same email can register independently with different applications. The service assigns the `user` role server-side, stores an Argon2id password hash and a SHA-256 hash of a random refresh token in the same database transaction, and rate-limits registration to five requests per minute per source IP.
 
-On success, the response contains only the public user ID and email inside the standard response envelope. The access and refresh tokens are set only as HttpOnly cookies. The access cookie uses `/`; the refresh cookie is scoped to `/auth`. Both are host-only, and use the configured SameSite policy and expiry. Production cookies are Secure. Registration requires an `Origin` header exactly matching one of `CORS_ORIGINS`.
+On success, the response contains only the public user ID and email inside the standard response envelope. The access and refresh tokens are set only as HttpOnly cookies. The access cookie uses `/`; the refresh cookie is scoped to `/auth`. Both are host-only, and use the configured SameSite policy and expiry. Production cookies are Secure. Registration requires an `Origin` header exactly matching one of `CORS_ORIGINS` and an active client with that origin assigned.
 
-`POST /auth/refresh` accepts the HttpOnly refresh cookie and requires the registered client ID and an allowed request origin. A valid session is rotated atomically: the previous session is revoked and a new hashed refresh token and access token are issued in the authentication cookies. Reuse of a revoked token revokes the user's remaining active refresh sessions. The endpoint is rate-limited to five requests per minute per source IP. `POST /auth/logout` is not implemented yet, so sessions cannot yet be explicitly revoked by clients.
+`POST /auth/refresh` accepts the HttpOnly refresh cookie and requires the registered client ID and an allowed request origin. A valid session is rotated atomically: the previous session is revoked and a new hashed refresh token and access token are issued in the authentication cookies. Reuse of a revoked token revokes the user's remaining active refresh sessions. The endpoint is rate-limited to five requests per minute per source IP.
 
 `POST /auth/login` accepts the same `email` and `password` fields and requires the same `X-Client-Id` header and client-specific origin check. Credentials are looked up only within the selected client. Invalid credentials and disabled accounts receive the same generic authentication error. Successful login creates a new hashed refresh session and sets the same HttpOnly cookies as registration. Login is rate-limited to five requests per minute per source IP.
 
@@ -200,11 +200,14 @@ Send a credentialed request to `POST /auth/logout` with the public `X-Client-Id`
 
 Send a credentialed request to `GET /auth/me` with the public `X-Client-Id` header and an allowed origin. The browser sends the access-token HttpOnly cookie automatically after login; API clients may instead send an Authorization header. Swagger UI is configured to include browser cookies, so use its login operation first rather than entering a token in an authorization field. The token and client must match an active account; the response contains only the user's ID and email.
 
-### Security Requirements
+### CSRF Protection and Security Requirements
+
+All state-changing authentication routes (`POST /auth/register`, `/auth/login`, `/auth/refresh`, and `/auth/logout`) use `TrustedOriginGuard`. It requires an `Origin` header, checks for an exact match in `CORS_ORIGINS`, then verifies that the origin is assigned to the active client identified by `X-Client-Id`. Requests with missing, unlisted, or client-mismatched origins are rejected. Keep this guard on any future state-changing endpoint that authenticates with cookies.
+
+This is strict origin-based CSRF protection for browser requests, independent of the browser's CORS enforcement; CORS alone is not the security check. Browser JavaScript cannot set the `Origin` header arbitrarily, while non-browser callers can, so the origin and client ID are not authentication credentials. Continue to require passwords or signed tokens as appropriate. This defense does not protect against script execution on a trusted origin (XSS); `SameSite` cookies and HTTPS are complementary protections.
 
 - Use HTTPS in production.
 - Configure `HttpOnly`, `Secure`, `SameSite`, expiration, and cookie scope appropriately.
-- Implement CSRF protection for cookie-authenticated state-changing requests.
 - Never place tokens in URLs or logs.
 - Never use `localStorage` or `sessionStorage` for browser authentication tokens.
 
