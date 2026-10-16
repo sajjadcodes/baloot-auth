@@ -6,17 +6,9 @@ Baloot Auth is a standalone authentication service built with NestJS, TypeScript
 
 It is designed to remain independent of any specific product, company, or business domain.
 
-## Features
+## Implementation Status
 
-- User registration and login.
-- JWT access tokens and refresh-token sessions.
-- HttpOnly cookies for browser authentication.
-- Logout, session revocation, and token rotation.
-- Current-user information.
-- Email verification and password reset.
-- Basic global roles and protected administrative endpoints.
-- Swagger/OpenAPI documentation.
-- PostgreSQL persistence using Prisma 7.
+The current foundation includes startup environment validation, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, and the initial Prisma 7 PostgreSQL schema and adapter. Authentication and authorization endpoints remain planned and are not yet available.
 
 ## Technology Stack
 
@@ -85,21 +77,22 @@ The structure may evolve as the service develops. Some directories will be intro
 
 ### Installation
 
-Clone the repository and install its dependencies:
+Install dependencies with pnpm:
 
 ```bash
-git clone <repository-url>
-cd baloot-auth
-npm install
+pnpm install
 ```
 
-Configure the required environment variables using `.env.example` as a reference. Provide the PostgreSQL connection details and the required authentication secrets.
+Copy `.env.example` to `.env`, then set `DATABASE_URL` to a reachable PostgreSQL database. `CORS_ORIGINS` is a comma-separated list of exact HTTP(S) origins; wildcard origins and paths are not accepted. The application validates these values at startup and connects to PostgreSQL before listening.
 
-Follow the project's scripts and the official Prisma 7 documentation for database adapter configuration and Prisma Client generation.
+Generate the Prisma Client and start the development server:
 
-Start the development server using the command configured in `package.json`.
+```bash
+pnpm db:generate
+pnpm start:dev
+```
 
-The exact environment variables and commands should be documented as the implementation is completed.
+The Prisma schema has not been migrated to the database. Database migrations remain under maintainer control and must not be generated or applied without explicit approval.
 
 ## API Documentation
 
@@ -130,27 +123,27 @@ The following endpoints define the planned authentication API. Availability depe
 
 Refer to Swagger for the exact request formats, response contracts, validation requirements, and error codes.
 
-## Browser Authentication
+## Planned Browser Authentication
 
-**Both access and refresh tokens use HttpOnly cookies.**
+When browser authentication is implemented, both access and refresh tokens must use HttpOnly cookies.
 
 Browser clients must not read or manually store these tokens in JavaScript.
 
-### Login
+### Planned Login
 
 Send credentials to `POST /auth/login`. After successful authentication, the service sets the access and refresh cookies using the configured security attributes.
 
-### Authenticated Requests
+### Planned Authenticated Requests
 
 The browser sends cookies automatically when the request matches their cookie scope and the request's credential settings.
 
 For a cross-origin frontend, configure the HTTP client to include credentials and configure the server's CORS policy to allow the specific frontend origin.
 
-### Refresh
+### Planned Refresh
 
 Send a request to `POST /auth/refresh`. The service validates the refresh session, rotates the refresh token when appropriate, and updates the cookies.
 
-### Logout
+### Planned Logout
 
 Send a request to `POST /auth/logout`. The service revokes the relevant refresh session and clears the authentication cookies.
 
@@ -164,7 +157,7 @@ Send a request to `POST /auth/logout`. The service revokes the relevant refresh 
 
 HttpOnly cookies prevent JavaScript from reading token values, but they do not independently prevent CSRF attacks.
 
-## Roles and Authorization
+## Planned Roles and Authorization
 
 Baloot Auth begins with two global roles:
 
