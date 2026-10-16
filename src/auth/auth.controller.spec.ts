@@ -5,6 +5,8 @@ import { REFRESH_TOKEN_COOKIE } from './auth.constants.js';
 import { AuthCookiesService } from './auth-cookies.service.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
+import { ROLES_KEY } from './decorators/roles.decorator.js';
+import { RolesGuard } from './guards/roles.guard.js';
 import { TrustedOriginGuard } from './guards/trusted-origin.guard.js';
 
 describe('AuthController', () => {
@@ -26,6 +28,20 @@ describe('AuthController', () => {
 
       expect(guards).toContain(TrustedOriginGuard);
     }
+  });
+
+  it('requires authentication and a baseline role for the current-user route', () => {
+    const guards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      AuthController.prototype.getCurrentUser,
+    );
+    const requiredRoles = Reflect.getMetadata(
+      ROLES_KEY,
+      AuthController.prototype.getCurrentUser,
+    );
+
+    expect(guards).toContain(RolesGuard);
+    expect(requiredRoles).toEqual(['user', 'platform_admin']);
   });
 
   it('requests password reset without revealing account eligibility', async () => {

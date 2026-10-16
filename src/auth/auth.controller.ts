@@ -21,8 +21,10 @@ import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { ResendVerificationDto } from './dto/resend-verification.dto.js';
 import { VerifyEmailDto } from './dto/verify-email.dto.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
+import { RolesGuard } from './guards/roles.guard.js';
 import { TrustedOriginGuard } from './guards/trusted-origin.guard.js';
 import type { AuthenticatedUser } from './strategies/jwt.strategy.js';
+import { Roles } from './decorators/roles.decorator.js';
 import {
   AUTH_THROTTLE_WINDOW_MS,
   CLIENT_ID_HEADER,
@@ -46,7 +48,8 @@ export class AuthController {
   ) {}
 
   @Get('me')
-  @UseGuards(ThrottlerGuard, TrustedOriginGuard, JwtAuthGuard)
+  @UseGuards(ThrottlerGuard, TrustedOriginGuard, JwtAuthGuard, RolesGuard)
+  @Roles('user', 'platform_admin')
   @ApiOperation({
     summary: 'Get the current user',
     description:

@@ -8,7 +8,7 @@ It is designed to remain independent of any specific product, company, or busine
 
 ## Implementation Status
 
-The current foundation includes validated startup configuration, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, a Prisma ORM 8 PostgreSQL contract and runtime, Argon2id password hashing, short-lived JWT access-token issuance with a Passport JWT strategy, and a globally applied success-response interceptor and exception filter. Application clients have registered origins; users, email uniqueness, authentication requests, and access tokens are scoped to one client. The root health response and authentication routes for registration, email verification, login, refresh, logout, current-user lookup, and password reset are implemented. Email verification is required before login; role-based authorization remains planned.
+The current foundation includes validated startup configuration, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, a Prisma ORM 8 PostgreSQL contract and runtime, Argon2id password hashing, short-lived JWT access-token issuance with a Passport JWT strategy, and a globally applied success-response interceptor and exception filter. Application clients have registered origins; users, email uniqueness, authentication requests, and access tokens are scoped to one client. The root health response and authentication routes for registration, email verification, login, refresh, logout, current-user lookup, and password reset are implemented. Email verification is required before login. Reusable role metadata and a database-backed roles guard are implemented; administrative operations and role-management endpoints remain planned.
 
 HTTP responses use a globally applied envelope: successful responses contain `success`, the HTTP `code`, a `message`, and endpoint `data`; errors contain `success: false`, the HTTP `code`, and a safe `message`. Unexpected server errors are logged server-side without stack traces or exception messages and returned to clients as a generic internal-server-error message.
 
@@ -216,7 +216,7 @@ Send a credentialed request to `POST /auth/logout` with the public `X-Client-Id`
 
 ### Current User
 
-Send a credentialed request to `GET /auth/me` with the public `X-Client-Id` header and an allowed origin. The browser sends the access-token HttpOnly cookie automatically after login; API clients may instead send an Authorization header. Swagger UI is configured to include browser cookies, so use its login operation first rather than entering a token in an authorization field. The token and client must match an active account; the response contains only the user's ID and email.
+Send a credentialed request to `GET /auth/me` with the public `X-Client-Id` header and an allowed origin. The browser sends the access-token HttpOnly cookie automatically after login; API clients may instead send an Authorization header. Swagger UI is configured to include browser cookies, so use its login operation first rather than entering a token in an authorization field. The token and client must match an active account with the `user` or `platform_admin` role currently assigned in the database; the response contains only the user's ID and email.
 
 ### CSRF Protection and Security Requirements
 
@@ -231,7 +231,7 @@ This is strict origin-based CSRF protection for browser requests, independent of
 
 HttpOnly cookies prevent JavaScript from reading token values, but they do not independently prevent CSRF attacks.
 
-## Planned Roles and Authorization
+## Roles and Authorization
 
 Baloot Auth begins with two global roles:
 
@@ -240,9 +240,13 @@ Baloot Auth begins with two global roles:
 
 Public registration cannot assign privileged roles.
 
+The `@Roles(...)` decorator and `RolesGuard` support role-based access checks. The guard checks active, verified account status and current role assignments in the database rather than relying on role claims in access tokens. `GET /auth/me` requires either the `user` or `platform_admin` role. Apply `JwtAuthGuard` before `RolesGuard` on protected routes so the request has a validated identity.
+
 These roles provide basic authorization. Applications using Baloot Auth remain responsible for their own business rules and resource-level permissions.
 
 A valid identity does not automatically authorize access to every resource.
+
+Administrative operations and role-management endpoints are not implemented. Assigning `platform_admin` must remain restricted to a trusted administrative process; never expose role escalation through public registration or client-controlled inputs.
 
 ## Database and Migrations
 

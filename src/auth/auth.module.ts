@@ -11,6 +11,7 @@ import { EmailDeliveryService } from './email-delivery.service.js';
 import { EmailVerificationService } from './email-verification.service.js';
 import { PasswordResetService } from './password-reset.service.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
+import { RolesGuard } from './guards/roles.guard.js';
 import { TrustedOriginGuard } from './guards/trusted-origin.guard.js';
 import { PasswordService } from './password.service.js';
 import { JwtStrategy } from './strategies/jwt.strategy.js';
@@ -48,6 +49,7 @@ import {
     JwtAuthGuard,
     JwtStrategy,
     PasswordService,
+    RolesGuard,
     TrustedOriginGuard,
   ],
   exports: [
@@ -55,6 +57,7 @@ import {
     AuthCookiesService,
     AuthService,
     JwtAuthGuard,
+    RolesGuard,
     JwtModule,
     PassportModule,
     PasswordService,
