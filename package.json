@@ -1,7 +1,7 @@
 {
   "name": "baloot-auth",
   "version": "0.0.1",
-  "description": "https://github.com/sajjadcodes/baloot-auth.git",
+  "description": "Reusable authentication service with secure cookie-based authentication, refresh token rotation, session management, and role-based access control.",
   "author": "Balootix",
   "private": true,
   "license": "UNLICENSED",
