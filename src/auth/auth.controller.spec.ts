@@ -184,4 +184,62 @@ describe('AuthController', () => {
     ).rejects.toThrow('rotation failed');
     expect(setAuthenticationCookies).not.toHaveBeenCalled();
   });
+
+  it('revokes the refresh session and clears cookies on logout', async () => {
+    const logout = jest.fn().mockResolvedValue(undefined);
+    const auth = { logout } as unknown as AuthService;
+    const clearAuthenticationCookies = jest.fn();
+    const cookies = {
+      clearAuthenticationCookies,
+    } as unknown as AuthCookiesService;
+    const controller = new AuthController(auth, cookies);
+    const request = {
+      cookies: { [REFRESH_TOKEN_COOKIE]: 'refresh-secret' },
+    } as unknown as Request;
+    const response = {} as Response;
+    const clientId = '00000000-0000-4000-8000-000000000001';
+
+    await expect(
+      controller.logout(request, clientId, response),
+    ).resolves.toBeUndefined();
+    expect(logout).toHaveBeenCalledWith('refresh-secret', clientId);
+    expect(clearAuthenticationCookies).toHaveBeenCalledWith(response);
+  });
+
+  it('still clears cookies when logout has no refresh cookie', async () => {
+    const logout = jest.fn().mockResolvedValue(undefined);
+    const auth = { logout } as unknown as AuthService;
+    const clearAuthenticationCookies = jest.fn();
+    const cookies = {
+      clearAuthenticationCookies,
+    } as unknown as AuthCookiesService;
+    const controller = new AuthController(auth, cookies);
+    const response = {} as Response;
+
+    await controller.logout({ cookies: {} } as Request, 'client-id', response);
+
+    expect(logout).toHaveBeenCalledWith(undefined, 'client-id');
+    expect(clearAuthenticationCookies).toHaveBeenCalledWith(response);
+  });
+
+  it('does not clear cookies when logout fails unexpectedly', async () => {
+    const logout = jest
+      .fn()
+      .mockRejectedValue(new Error('database unavailable'));
+    const auth = { logout } as unknown as AuthService;
+    const clearAuthenticationCookies = jest.fn();
+    const cookies = {
+      clearAuthenticationCookies,
+    } as unknown as AuthCookiesService;
+    const controller = new AuthController(auth, cookies);
+
+    await expect(
+      controller.logout(
+        { cookies: {} } as Request,
+        'client-id',
+        {} as Response,
+      ),
+    ).rejects.toThrow('database unavailable');
+    expect(clearAuthenticationCookies).not.toHaveBeenCalled();
+  });
 });

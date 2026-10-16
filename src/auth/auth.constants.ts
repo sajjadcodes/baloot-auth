@@ -10,6 +10,7 @@ export const AUTH_GLOBAL_RATE_LIMIT = 10;
 export const REGISTER_RATE_LIMIT = 5;
 export const LOGIN_RATE_LIMIT = 5;
 export const REFRESH_RATE_LIMIT = 5;
+export const LOGOUT_RATE_LIMIT = 5;
 export const REFRESH_TOKEN_BYTES = 32;
 export const REFRESH_TOKEN_HASH_ALGORITHM = 'sha256';
 export const REFRESH_TOKEN_HASH_MAX_LENGTH = 128;

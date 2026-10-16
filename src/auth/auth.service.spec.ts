@@ -107,7 +107,10 @@ describe('AuthService', () => {
           User: {
             where: whereUser,
           },
-          RefreshSession: { create: createSession },
+          RefreshSession: {
+            create: createSession,
+            where: whereRefreshSession,
+          },
         },
       } as unknown as PrismaService,
       {
@@ -257,6 +260,77 @@ describe('AuthService', () => {
     ).rejects.toThrow('Invalid email or password.');
     expect(createSession).not.toHaveBeenCalled();
     expect(issueAccessToken).not.toHaveBeenCalled();
+  });
+
+  describe('logout', () => {
+    const existingToken = 'r'.repeat(43);
+    const refreshSession = {
+      id: 'session-1',
+      userId: user.id,
+      tokenHash: 'stored-token-hash',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      revokedAt: null as string | null,
+    };
+
+    beforeEach(() => {
+      findRefreshSession.mockResolvedValue(refreshSession);
+      updateRefreshSession.mockResolvedValue(refreshSession);
+      findRefreshUser.mockResolvedValue({
+        ...user,
+        status: 'ACTIVE',
+        clientId,
+      });
+    });
+
+    it('revokes the matching active refresh session', async () => {
+      await expect(
+        service.logout(existingToken, clientId),
+      ).resolves.toBeUndefined();
+
+      expect(whereRefreshSession).toHaveBeenNthCalledWith(1, {
+        tokenHash: createHashForTest(existingToken),
+      });
+      expect(whereRefreshSession).toHaveBeenNthCalledWith(2, {
+        id: refreshSession.id,
+        revokedAt: null,
+      });
+      expect(updateRefreshSession).toHaveBeenCalledWith({
+        revokedAt: expect.any(String),
+      });
+    });
+
+    it('does nothing for missing, malformed, or unknown refresh tokens', async () => {
+      await service.logout(undefined, clientId);
+      await service.logout('malformed', clientId);
+      findRefreshSession.mockResolvedValue(null);
+      await service.logout(existingToken, clientId);
+
+      expect(whereRefreshSession).toHaveBeenCalledTimes(1);
+      expect(updateRefreshSession).not.toHaveBeenCalled();
+    });
+
+    it('does not revoke a session belonging to a different client', async () => {
+      findRefreshUser.mockResolvedValue({
+        ...user,
+        status: 'ACTIVE',
+        clientId: 'another-client',
+      });
+
+      await service.logout(existingToken, clientId);
+
+      expect(updateRefreshSession).not.toHaveBeenCalled();
+    });
+
+    it('does not revoke a session that was already revoked', async () => {
+      findRefreshSession.mockResolvedValue({
+        ...refreshSession,
+        revokedAt: new Date().toISOString(),
+      });
+
+      await service.logout(existingToken, clientId);
+
+      expect(updateRefreshSession).not.toHaveBeenCalled();
+    });
   });
 
   describe('refresh', () => {

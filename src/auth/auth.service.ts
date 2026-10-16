@@ -144,6 +144,39 @@ export class AuthService {
     };
   }
 
+  async logout(
+    refreshToken: string | undefined,
+    clientId: string,
+  ): Promise<void> {
+    if (!refreshToken || !REFRESH_TOKEN_PATTERN.test(refreshToken)) {
+      return;
+    }
+
+    const tokenHash = createHash(REFRESH_TOKEN_HASH_ALGORITHM)
+      .update(refreshToken)
+      .digest('hex');
+    const session = await this.prisma.public.RefreshSession.where({
+      tokenHash: toVarchar(tokenHash, REFRESH_TOKEN_HASH_MAX_LENGTH),
+    }).first();
+
+    if (!session || session.revokedAt !== null) {
+      return;
+    }
+
+    const user = await this.prisma.public.User.where({
+      id: session.userId,
+    }).first();
+
+    if (!user || user.clientId !== clientId) {
+      return;
+    }
+
+    await this.prisma.public.RefreshSession.where({
+      id: session.id,
+      revokedAt: null,
+    }).update({ revokedAt: new Date().toISOString() });
+  }
+
   async refresh(refreshToken: string, clientId: string): Promise<LoginResult> {
     // Validate the opaque token before querying storage; only its hash is persisted.
     if (!REFRESH_TOKEN_PATTERN.test(refreshToken)) {

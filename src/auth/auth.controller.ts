@@ -19,8 +19,8 @@ import { TrustedOriginGuard } from './guards/trusted-origin.guard.js';
 import {
   AUTH_THROTTLE_WINDOW_MS,
   CLIENT_ID_HEADER,
-  INVALID_REFRESH_TOKEN_MESSAGE,
   LOGIN_RATE_LIMIT,
+  LOGOUT_RATE_LIMIT,
   REFRESH_RATE_LIMIT,
   REFRESH_TOKEN_COOKIE,
   REGISTER_RATE_LIMIT,
@@ -125,7 +125,7 @@ export class AuthController {
       REFRESH_TOKEN_COOKIE
     ] as unknown;
     if (typeof refreshToken !== 'string' || refreshToken.length === 0) {
-      throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
+      throw new UnauthorizedException('Invalid or expired refresh token.');
     }
 
     const result = await this.auth.refresh(refreshToken, clientId);
@@ -135,5 +135,39 @@ export class AuthController {
       result.refreshToken,
     );
     return result.user;
+  }
+
+  @Post('logout')
+  @UseGuards(ThrottlerGuard, TrustedOriginGuard)
+  @Throttle({
+    default: {
+      limit: LOGOUT_RATE_LIMIT,
+      ttl: AUTH_THROTTLE_WINDOW_MS,
+    },
+  })
+  @ApiOperation({
+    summary: 'Log out a user',
+    description:
+      'Revokes the refresh session from the HttpOnly cookie when valid for this client, then clears the access and refresh cookies. Any issued access token remains valid until it expires.',
+  })
+  @ApiHeader({
+    name: CLIENT_ID_HEADER,
+    description: 'Public ID of the registered application client.',
+    required: true,
+  })
+  async logout(
+    @Req() request: Request,
+    @Headers(CLIENT_ID_HEADER) clientId: string,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<void> {
+    const refreshToken: unknown = request.cookies?.[
+      REFRESH_TOKEN_COOKIE
+    ] as unknown;
+
+    await this.auth.logout(
+      typeof refreshToken === 'string' ? refreshToken : undefined,
+      clientId,
+    );
+    this.cookies.clearAuthenticationCookies(response);
   }
 }
