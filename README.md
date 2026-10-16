@@ -8,7 +8,7 @@ It is designed to remain independent of any specific product, company, or busine
 
 ## Implementation Status
 
-The current foundation includes startup environment validation, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, and the initial Prisma 7 PostgreSQL schema and adapter. Authentication and authorization endpoints remain planned and are not yet available.
+The current foundation includes startup environment validation, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, the initial Prisma 7 PostgreSQL schema and adapter, and an Argon2id password-hashing service. Registration, login, and authorization endpoints remain planned and are not yet available.
 
 ## Technology Stack
 
