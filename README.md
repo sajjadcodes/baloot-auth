@@ -61,7 +61,8 @@ baloot-auth/
 ├── prisma.config.ts
 ├── .env.example
 ├── .gitignore
-├── AGENTS.md
+├── .agents/
+│   └── AGENTS.md
 ├── README.md
 ├── package.json
 └── tsconfig.json
@@ -276,7 +277,7 @@ Add tests for session rotation and revocation.
 
 Add appropriate tests for new functionality and update Swagger documentation when API contracts change.
 
-See `AGENTS.md` for the full architecture, security requirements, implementation roadmap, and AI coding-agent instructions.
+See [.agents/AGENTS.md](.agents/AGENTS.md) for AI coding-agent instructions.
 
 ## Project Principles
 
