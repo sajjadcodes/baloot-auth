@@ -3,6 +3,7 @@ import {
   IsArray,
   IsIn,
   IsInt,
+  MinLength,
   IsString,
   IsUrl,
   Max,
@@ -27,6 +28,16 @@ export class EnvironmentVariables {
     require_tld: false,
   })
   DATABASE_URL!: string;
+
+  @IsString()
+  @MinLength(32)
+  JWT_ACCESS_SECRET!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(60)
+  @Max(3600)
+  JWT_ACCESS_TTL_SECONDS = 900;
 
   @Transform(({ value }) =>
     value == null || value === ''

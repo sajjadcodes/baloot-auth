@@ -8,7 +8,7 @@ It is designed to remain independent of any specific product, company, or busine
 
 ## Implementation Status
 
-The current foundation includes startup environment validation, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, the initial Prisma 7 PostgreSQL schema and adapter, and an Argon2id password-hashing service. Registration, login, and authorization endpoints remain planned and are not yet available.
+The current foundation includes startup environment validation, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, the initial Prisma 7 PostgreSQL schema and adapter, an Argon2id password-hashing service, and short-lived JWT access-token issuance with a Passport JWT strategy. Registration, login, refresh sessions, and authorization endpoints remain planned and are not yet available.
 
 ## Technology Stack
 
@@ -83,7 +83,7 @@ Install dependencies with pnpm:
 pnpm install
 ```
 
-Copy `.env.example` to `.env`, then set `DATABASE_URL` to a reachable PostgreSQL database. `CORS_ORIGINS` is a comma-separated list of exact HTTP(S) origins; wildcard origins and paths are not accepted. The application validates these values at startup and connects to PostgreSQL before listening.
+Copy `.env.example` to `.env`, then set `DATABASE_URL` to a reachable PostgreSQL database and replace `JWT_ACCESS_SECRET` with a cryptographically random secret of at least 32 characters. `JWT_ACCESS_TTL_SECONDS` must be between 60 and 3600 seconds and defaults to 900. `CORS_ORIGINS` is a comma-separated list of exact HTTP(S) origins; wildcard origins and paths are not accepted. The application validates these values at startup and connects to PostgreSQL before listening.
 
 Generate the Prisma Client and start the development server:
 
@@ -93,6 +93,12 @@ pnpm start:dev
 ```
 
 The Prisma schema has not been migrated to the database. Database migrations remain under maintainer control and must not be generated or applied without explicit approval.
+
+## JWT Access-Token Foundation
+
+The auth module issues HS256 access tokens with a configurable lifetime of 60–3600 seconds (900 seconds by default). The Passport JWT strategy extracts bearer tokens from the `Authorization` header, verifies their signature and expiration, and maps a valid `sub` claim to `request.user.userId`. No protected routes currently consume this strategy; authentication endpoints remain planned.
+
+`JWT_ACCESS_SECRET` must be a private, cryptographically random value with at least 32 characters. Never commit or log the production secret.
 
 ## API Documentation
 
