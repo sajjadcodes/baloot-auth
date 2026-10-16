@@ -9,7 +9,14 @@ import { TrustedOriginGuard } from './guards/trusted-origin.guard.js';
 
 describe('AuthController', () => {
   it('requires trusted-origin validation on every state-changing auth route', () => {
-    for (const method of ['register', 'login', 'refresh', 'logout'] as const) {
+    for (const method of [
+      'register',
+      'verifyEmail',
+      'resendVerification',
+      'login',
+      'refresh',
+      'logout',
+    ] as const) {
       const guards = Reflect.getMetadata(
         GUARDS_METADATA,
         AuthController.prototype[method],
@@ -19,38 +26,54 @@ describe('AuthController', () => {
     }
   });
 
-  it('sets browser cookies and returns only public user information', async () => {
-    const result = {
-      user: { id: 'user-1', email: 'person@example.com' },
-      accessToken: 'access-secret',
-      refreshToken: 'refresh-secret',
-    };
-    const register = jest.fn().mockResolvedValue(result);
-    const login = jest.fn().mockResolvedValue(result);
+  it('sends verification after registration without setting authentication cookies', async () => {
+    const user = { id: 'user-1', email: 'person@example.com' };
+    const register = jest.fn().mockResolvedValue(user);
     const auth = {
       register,
-      login,
     } as unknown as AuthService;
     const setAuthenticationCookies = jest.fn();
     const cookies = {
       setAuthenticationCookies,
     } as unknown as AuthCookiesService;
     const controller = new AuthController(auth, cookies);
-    const response = {} as Response;
     const dto = {
-      email: result.user.email,
+      email: user.email,
       password: 'long registration password',
     };
     const clientId = '00000000-0000-4000-8000-000000000001';
 
-    await expect(controller.register(dto, clientId, response)).resolves.toEqual(
-      result.user,
-    );
+    await expect(controller.register(dto, clientId)).resolves.toEqual(user);
     expect(register).toHaveBeenCalledWith(dto.email, dto.password, clientId);
-    expect(setAuthenticationCookies).toHaveBeenCalledWith(
-      response,
-      result.accessToken,
-      result.refreshToken,
+    expect(setAuthenticationCookies).not.toHaveBeenCalled();
+  });
+
+  it('verifies an email using the token and request client', async () => {
+    const verifyEmail = jest.fn().mockResolvedValue(undefined);
+    const auth = { verifyEmail } as unknown as AuthService;
+    const controller = new AuthController(auth, {} as AuthCookiesService);
+    const clientId = '00000000-0000-4000-8000-000000000001';
+
+    await expect(
+      controller.verifyEmail({ token: 'verification-token' }, clientId),
+    ).resolves.toEqual({ verified: true });
+    expect(verifyEmail).toHaveBeenCalledWith('verification-token', clientId);
+  });
+
+  it('resends verification with a non-enumerating response', async () => {
+    const resendVerificationEmail = jest.fn().mockResolvedValue(undefined);
+    const auth = { resendVerificationEmail } as unknown as AuthService;
+    const controller = new AuthController(auth, {} as AuthCookiesService);
+    const clientId = '00000000-0000-4000-8000-000000000001';
+
+    await expect(
+      controller.resendVerification({ email: 'person@example.com' }, clientId),
+    ).resolves.toEqual({
+      message: 'If the account is eligible, a verification email was sent.',
+    });
+    expect(resendVerificationEmail).toHaveBeenCalledWith(
+      'person@example.com',
+      clientId,
     );
   });
 
@@ -108,7 +131,6 @@ describe('AuthController', () => {
       controller.register(
         { email: 'person@example.com', password: 'long registration password' },
         '00000000-0000-4000-8000-000000000001',
-        {} as Response,
       ),
     ).rejects.toThrow('registration failed');
     expect(setAuthenticationCookies).not.toHaveBeenCalled();

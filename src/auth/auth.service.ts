@@ -15,18 +15,21 @@ import {
   REFRESH_TOKEN_PATTERN,
 } from './auth.constants.js';
 import { AccessTokenService } from './access-token.service.js';
+import { EmailVerificationService } from './email-verification.service.js';
 import { PasswordService } from './password.service.js';
 
-export interface RegistrationResult {
-  user: {
-    id: string;
-    email: string;
-  };
+export interface AuthenticatedUserInfo {
+  id: string;
+  email: string;
+}
+
+export type RegistrationResult = AuthenticatedUserInfo;
+
+export interface LoginResult {
+  user: AuthenticatedUserInfo;
   accessToken: string;
   refreshToken: string;
 }
-
-export type LoginResult = RegistrationResult;
 
 @Injectable()
 export class AuthService {
@@ -34,6 +37,7 @@ export class AuthService {
     @Inject('PRISMA_SERVICE') private readonly prisma: PrismaService,
     private readonly passwords: PasswordService,
     private readonly accessTokens: AccessTokenService,
+    private readonly emailVerification: EmailVerificationService,
     private readonly config: ConfigService,
   ) {}
 
@@ -44,17 +48,10 @@ export class AuthService {
   ): Promise<RegistrationResult> {
     const normalizedEmail = email.trim().toLowerCase();
     const passwordHash = await this.passwords.hash(password);
-    const refreshToken = randomBytes(REFRESH_TOKEN_BYTES).toString('base64url');
-    const tokenHash = createHash(REFRESH_TOKEN_HASH_ALGORITHM)
-      .update(refreshToken)
-      .digest('hex');
-    const expiresAt = new Date(
-      Date.now() +
-        this.config.getOrThrow<number>('REFRESH_SESSION_TTL_SECONDS') * 1000,
-    );
 
+    let user: { id: string; email: string; clientId: string };
     try {
-      const user = await this.prisma.client.transaction(async (transaction) => {
+      user = await this.prisma.client.transaction(async (transaction) => {
         const role = await transaction.orm.public.Role.where({
           name: toVarchar('user', 64),
         }).first();
@@ -76,22 +73,12 @@ export class AuthService {
           roleId: role.id,
         });
 
-        await transaction.orm.public.RefreshSession.create({
-          userId: createdUser.id,
-          tokenHash: toVarchar(tokenHash, REFRESH_TOKEN_HASH_MAX_LENGTH),
-          expiresAt: expiresAt.toISOString(),
-        });
-
-        return { id: createdUser.id, email: createdUser.email };
+        return {
+          id: createdUser.id,
+          email: createdUser.email,
+          clientId: createdUser.clientId,
+        };
       });
-
-      const accessToken = await this.accessTokens.issue(user.id, clientId);
-
-      return {
-        user,
-        accessToken,
-        refreshToken,
-      };
     } catch (error) {
       if (isPostgresUniqueConstraintViolation(error)) {
         throw new ConflictException('Registration could not be completed.');
@@ -99,6 +86,13 @@ export class AuthService {
 
       throw error;
     }
+
+    await this.emailVerification.sendVerificationEmail({
+      userId: user.id,
+      clientId: user.clientId,
+      email: user.email,
+    });
+    return { id: user.id, email: user.email };
   }
 
   async login(
@@ -115,7 +109,8 @@ export class AuthService {
     if (
       !user ||
       !(await this.passwords.verify(password, user.passwordHash)) ||
-      user.status !== 'ACTIVE'
+      user.status !== 'ACTIVE' ||
+      !user.emailVerifiedAt
     ) {
       throw new UnauthorizedException('Invalid email or password.');
     }
@@ -186,11 +181,51 @@ export class AuthService {
       clientId,
     }).first();
 
-    if (!user || user.status !== 'ACTIVE') {
+    if (!user || user.status !== 'ACTIVE' || !user.emailVerifiedAt) {
       throw new UnauthorizedException('Invalid or expired access token.');
     }
 
     return { id: user.id, email: user.email };
+  }
+
+  async resendVerificationEmail(
+    email: string,
+    clientId: string,
+  ): Promise<void> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await this.prisma.public.User.where({
+      clientId,
+      email: toVarchar(normalizedEmail, 320),
+    }).first();
+
+    if (!user || user.status !== 'ACTIVE' || user.emailVerifiedAt !== null) {
+      return;
+    }
+
+    await this.emailVerification.sendVerificationEmail({
+      userId: user.id,
+      clientId: user.clientId,
+      email: user.email,
+    });
+  }
+
+  async verifyEmail(token: string, clientId: string): Promise<void> {
+    const claims = await this.emailVerification.verifyToken(token);
+    if (claims.clientId !== clientId) {
+      throw new UnauthorizedException('Invalid or expired verification token.');
+    }
+
+    const updatedUser = await this.prisma.public.User.where({
+      id: claims.userId,
+      clientId: claims.clientId,
+      email: toVarchar(claims.email, 320),
+      status: 'ACTIVE',
+      emailVerifiedAt: null,
+    }).update({ emailVerifiedAt: new Date().toISOString() });
+
+    if (!updatedUser) {
+      throw new UnauthorizedException('Invalid or expired verification token.');
+    }
   }
 
   async refresh(refreshToken: string, clientId: string): Promise<LoginResult> {
@@ -252,7 +287,7 @@ export class AuthService {
         }
 
         // Disable refresh for inactive users and invalidate this session.
-        if (user.status !== 'ACTIVE') {
+        if (user.status !== 'ACTIVE' || !user.emailVerifiedAt) {
           await sessions
             .where({ id: session.id, revokedAt: null })
             .update({ revokedAt: nowString });

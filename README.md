@@ -8,7 +8,7 @@ It is designed to remain independent of any specific product, company, or busine
 
 ## Implementation Status
 
-The current foundation includes validated startup configuration, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, a Prisma ORM 8 PostgreSQL contract and runtime, Argon2id password hashing, short-lived JWT access-token issuance with a Passport JWT strategy, and a globally applied success-response interceptor and exception filter. Application clients have registered origins; users, email uniqueness, authentication requests, and access tokens are scoped to one client. The root health response and `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, and `GET /auth/me` are implemented. Email verification, password reset, and authorization endpoints are not yet available.
+The current foundation includes validated startup configuration, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, a Prisma ORM 8 PostgreSQL contract and runtime, Argon2id password hashing, short-lived JWT access-token issuance with a Passport JWT strategy, and a globally applied success-response interceptor and exception filter. Application clients have registered origins; users, email uniqueness, authentication requests, and access tokens are scoped to one client. The root health response and `POST /auth/register`, `/auth/verify-email`, `/auth/resend-verification`, `/auth/login`, `/auth/refresh`, `/auth/logout`, and `GET /auth/me` are implemented. Email verification is required before login; password reset and authorization endpoints remain planned.
 
 HTTP responses use a globally applied envelope: successful responses contain `success`, the HTTP `code`, a `message`, and endpoint `data`; errors contain `success: false`, the HTTP `code`, and a safe `message`. Unexpected server errors are logged server-side without stack traces or exception messages and returned to clients as a generic internal-server-error message.
 
@@ -113,13 +113,17 @@ The auth module issues HS256 access tokens with a configurable lifetime of 60–
 
 ## Registration
 
-`POST /auth/register` accepts JSON containing `email` and `password` and requires the `X-Client-Id` header containing the UUID of an active registered client. This ID is a public frontend configuration value, not a secret or cookie. The request origin must be allowed globally in `CORS_ORIGINS` and assigned to that client in `client_allowed_origins`. Email is normalized to lowercase; passwords must be 12–128 characters. Email uniqueness is scoped to the client, so the same email can register independently with different applications. The service assigns the `user` role server-side, stores an Argon2id password hash and a SHA-256 hash of a random refresh token in the same database transaction, and rate-limits registration to five requests per minute per source IP.
+`POST /auth/register` accepts JSON containing `email` and `password` and requires the `X-Client-Id` header containing the UUID of an active registered client. This ID is a public frontend configuration value, not a secret or cookie. The request origin must be allowed globally in `CORS_ORIGINS` and assigned to that client in `client_allowed_origins`. Email is normalized to lowercase; passwords must be 12–128 characters. Email uniqueness is scoped to the client, so the same email can register independently with different applications. The service assigns the `user` role server-side and stores an Argon2id password hash. It then sends a short-lived signed verification link via Resend. Registration does not create an authentication session or set cookies; the user must verify their email before logging in. Registration is rate-limited to five requests per minute per source IP.
 
-On success, the response contains only the public user ID and email inside the standard response envelope. The access and refresh tokens are set only as HttpOnly cookies. The access cookie uses `/`; the refresh cookie is scoped to `/auth`. Both are host-only, and use the configured SameSite policy and expiry. Production cookies are Secure. Registration requires an `Origin` header exactly matching one of `CORS_ORIGINS` and an active client with that origin assigned.
+On success, the response contains only the public user ID and email inside the standard response envelope. Registration requires an `Origin` header exactly matching one of `CORS_ORIGINS` and an active client with that origin assigned. If email delivery fails after account creation, use `POST /auth/resend-verification` to request another message.
+
+`POST /auth/verify-email` accepts a verification token and the originating `X-Client-Id`. The short-lived JWT is signed with the separate `EMAIL_VERIFICATION_SECRET`, identifies the user, client, email, and verification purpose, and is not stored in the database. A conditional update marks the account verified only once; expired, wrong-purpose, mismatched-client, and replayed tokens are rejected. Verification links carry the token in the URL fragment so browsers do not send it in the initial HTTP request. The frontend should read the fragment, POST the token to this endpoint, and remove it from the address bar.
+
+`POST /auth/resend-verification` accepts an email and returns the same message whether or not an eligible account exists. It sends only for active, unverified accounts and is rate-limited. Configure Resend with a verified sender.
 
 `POST /auth/refresh` accepts the HttpOnly refresh cookie and requires the registered client ID and an allowed request origin. A valid session is rotated atomically: the previous session is revoked and a new hashed refresh token and access token are issued in the authentication cookies. Reuse of a revoked token revokes the user's remaining active refresh sessions. The endpoint is rate-limited to five requests per minute per source IP.
 
-`POST /auth/login` accepts the same `email` and `password` fields and requires the same `X-Client-Id` header and client-specific origin check. Credentials are looked up only within the selected client. Invalid credentials and disabled accounts receive the same generic authentication error. Successful login creates a new hashed refresh session and sets the same HttpOnly cookies as registration. Login is rate-limited to five requests per minute per source IP.
+`POST /auth/login` accepts the same `email` and `password` fields and requires the same `X-Client-Id` header and client-specific origin check. Credentials are looked up only within the selected client. Invalid credentials, disabled accounts, and unverified accounts receive the same generic authentication error. Successful login creates a new hashed refresh session and sets access and refresh HttpOnly cookies. The access cookie uses `/`; the refresh cookie is scoped to `/auth`. Both are host-only, and use the configured SameSite policy and expiry. Production cookies are Secure. Login is rate-limited to five requests per minute per source IP.
 
 Client records and their allowed origins are stored separately. They are not managed through a public API and must never be created from user-supplied IDs during public registration. Provision clients through a trusted local seed or other controlled administrative process before using registration or login. The browser sends the public client ID in `X-Client-Id`; the server alone sets authentication cookies, because browsers cannot create HttpOnly cookies from frontend code. The client ID and an Origin header are not secrets or proof of identity: non-browser callers can send arbitrary headers, so authentication must continue to rely on credentials and signed tokens.
 
@@ -153,34 +157,39 @@ The actual host and port depend on the application configuration.
 
 Swagger documents implemented operations and request DTOs. Endpoint operation summaries and DTO property decorators are used; API response decorators are intentionally not used.
 
-The root `GET /`, `POST /auth/register`, and `POST /auth/login` endpoints are currently implemented. Their successful results are wrapped in the standard response envelope.
+The root `GET /` and authentication routes listed below are implemented. Successful results are wrapped in the standard response envelope.
 
 ## API Reference
 
 The authentication endpoint status is:
 
-| Method | Endpoint                | Purpose                                                         |
-| ------ | ----------------------- | --------------------------------------------------------------- |
-| `POST` | `/auth/register`        | Implemented: register a user and set authentication cookies     |
-| `POST` | `/auth/login`           | Implemented: authenticate a user and set authentication cookies |
-| `POST` | `/auth/refresh`         | Implemented: rotate tokens and set authentication cookies       |
-| `POST` | `/auth/logout`          | Implemented: revoke the refresh session and clear cookies       |
-| `GET`  | `/auth/me`              | Implemented: retrieve the authenticated user's information      |
-| `POST` | `/auth/verify-email`    | Planned: verify an email address                                |
-| `POST` | `/auth/forgot-password` | Planned: request a password reset                               |
-| `POST` | `/auth/reset-password`  | Planned: reset a password                                       |
+| Method | Endpoint                    | Purpose                                                         |
+| ------ | --------------------------- | --------------------------------------------------------------- |
+| `POST` | `/auth/register`            | Implemented: create an account and send verification email      |
+| `POST` | `/auth/verify-email`        | Implemented: verify an email address                            |
+| `POST` | `/auth/resend-verification` | Implemented: resend verification email                          |
+| `POST` | `/auth/login`               | Implemented: authenticate a user and set authentication cookies |
+| `POST` | `/auth/refresh`             | Implemented: rotate tokens and set authentication cookies       |
+| `POST` | `/auth/logout`              | Implemented: revoke the refresh session and clear cookies       |
+| `GET`  | `/auth/me`                  | Implemented: retrieve the authenticated user's information      |
+| `POST` | `/auth/forgot-password`     | Planned: request a password reset                               |
+| `POST` | `/auth/reset-password`      | Planned: reset a password                                       |
 
 Refer to Swagger for the exact request formats, response contracts, validation requirements, and error codes.
 
 ## Browser Authentication
 
-Browser registration sets both access and refresh tokens as HttpOnly cookies.
+Only a successful login after email verification sets access and refresh tokens as HttpOnly cookies.
 
 Browser clients must not read or manually store these tokens in JavaScript.
 
 ### Login
 
 Send credentials to `POST /auth/login`. After successful authentication, the service sets the access and refresh cookies using the configured security attributes.
+
+### Email Verification
+
+Registration sends a short-lived verification link through Resend. Configure `RESEND_API_KEY`, `AUTH_EMAIL_FROM` (a sender verified with Resend), `EMAIL_VERIFICATION_SECRET` (a private random secret of at least 32 characters), `EMAIL_VERIFICATION_TTL_SECONDS`, and `EMAIL_VERIFICATION_URL` (the frontend page that handles verification). In production, the verification URL must use HTTPS. The frontend reads the token from the URL fragment and sends it in the body of a credentialed `POST /auth/verify-email` request with `X-Client-Id`, then removes the token from the URL. If the email does not arrive, call `POST /auth/resend-verification`; its response does not disclose whether the account exists.
 
 ### Planned Authenticated Requests
 
@@ -202,7 +211,7 @@ Send a credentialed request to `GET /auth/me` with the public `X-Client-Id` head
 
 ### CSRF Protection and Security Requirements
 
-All state-changing authentication routes (`POST /auth/register`, `/auth/login`, `/auth/refresh`, and `/auth/logout`) use `TrustedOriginGuard`. It requires an `Origin` header, checks for an exact match in `CORS_ORIGINS`, then verifies that the origin is assigned to the active client identified by `X-Client-Id`. Requests with missing, unlisted, or client-mismatched origins are rejected. Keep this guard on any future state-changing endpoint that authenticates with cookies.
+All state-changing authentication routes (`POST /auth/register`, `/auth/verify-email`, `/auth/resend-verification`, `/auth/login`, `/auth/refresh`, and `/auth/logout`) use `TrustedOriginGuard`. It requires an `Origin` header, checks for an exact match in `CORS_ORIGINS`, then verifies that the origin is assigned to the active client identified by `X-Client-Id`. Requests with missing, unlisted, or client-mismatched origins are rejected. Keep this guard on any future state-changing endpoint that authenticates with cookies.
 
 This is strict origin-based CSRF protection for browser requests, independent of the browser's CORS enforcement; CORS alone is not the security check. Browser JavaScript cannot set the `Origin` header arbitrarily, while non-browser callers can, so the origin and client ID are not authentication credentials. Continue to require passwords or signed tokens as appropriate. This defense does not protect against script execution on a trusted origin (XSS); `SameSite` cookies and HTTPS are complementary protections.
 

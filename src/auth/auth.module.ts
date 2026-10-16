@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller.js';
 import { AuthCookiesService } from './auth-cookies.service.js';
 import { AccessTokenService } from './access-token.service.js';
 import { AuthService } from './auth.service.js';
+import { EmailVerificationService } from './email-verification.service.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { TrustedOriginGuard } from './guards/trusted-origin.guard.js';
 import { PasswordService } from './password.service.js';
@@ -39,6 +40,7 @@ import {
     AccessTokenService,
     AuthCookiesService,
     AuthService,
+    EmailVerificationService,
     JwtAuthGuard,
     JwtStrategy,
     PasswordService,

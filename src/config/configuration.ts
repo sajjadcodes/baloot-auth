@@ -4,6 +4,7 @@ import {
   IsIn,
   IsInt,
   IsString,
+  MaxLength,
   MinLength,
   IsUrl,
   Max,
@@ -66,6 +67,33 @@ export class EnvironmentVariables {
     { each: true },
   )
   CORS_ORIGINS: string[] = [];
+
+  @IsString()
+  @MinLength(32)
+  EMAIL_VERIFICATION_SECRET!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(300)
+  @Max(604800)
+  EMAIL_VERIFICATION_TTL_SECONDS = 86400;
+
+  @IsString()
+  @MinLength(1)
+  RESEND_API_KEY!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(320)
+  AUTH_EMAIL_FROM!: string;
+
+  @IsString()
+  @IsUrl({
+    protocols: ['http', 'https'],
+    require_protocol: true,
+    require_tld: false,
+  })
+  EMAIL_VERIFICATION_URL!: string;
 }
 
 export function validateEnvironment(
@@ -102,6 +130,21 @@ export function validateEnvironment(
         'Invalid environment configuration: CORS_ORIGINS must contain only HTTP(S) origins without paths.',
       );
     }
+  }
+
+  if (
+    environment.NODE_ENV === 'production' &&
+    new URL(environment.EMAIL_VERIFICATION_URL).protocol !== 'https:'
+  ) {
+    throw new Error(
+      'Invalid environment configuration: EMAIL_VERIFICATION_URL must use HTTPS in production.',
+    );
+  }
+
+  if (environment.EMAIL_VERIFICATION_SECRET === environment.JWT_ACCESS_SECRET) {
+    throw new Error(
+      'Invalid environment configuration: email verification and access-token secrets must differ.',
+    );
   }
 
   return environment;

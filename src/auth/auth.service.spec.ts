@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import type { PrismaService } from '../database/prisma.service.js';
 import { AccessTokenService } from './access-token.service.js';
 import { AuthService } from './auth.service.js';
+import { EmailVerificationService } from './email-verification.service.js';
 
 describe('AuthService', () => {
   const user = { id: 'user-1', email: 'person@example.com' };
@@ -14,6 +15,7 @@ describe('AuthService', () => {
   let service: AuthService;
   let findUser: jest.Mock;
   let findRefreshUser: jest.Mock;
+  let updateUser: jest.Mock;
   let whereUser: jest.Mock;
   let findRefreshSession: jest.Mock;
   let whereRefreshSession: jest.Mock;
@@ -37,6 +39,8 @@ describe('AuthService', () => {
   let hashPassword: jest.Mock;
   let verifyPassword: jest.Mock;
   let issueAccessToken: jest.Mock;
+  let sendVerificationEmail: jest.Mock;
+  let verifyEmailToken: jest.Mock;
   let refreshSessionData:
     { userId: string; tokenHash: string; expiresAt: string } | undefined;
   let loginSessionData:
@@ -49,7 +53,7 @@ describe('AuthService', () => {
     const findRole = jest
       .fn()
       .mockReturnValue({ first: jest.fn().mockResolvedValue(role) });
-    const createUser = jest.fn().mockResolvedValue(user);
+    const createUser = jest.fn().mockResolvedValue({ ...user, clientId });
     const createRefreshSession = jest
       .fn()
       .mockImplementation(
@@ -60,8 +64,11 @@ describe('AuthService', () => {
       );
     findUser = jest.fn();
     findRefreshUser = jest.fn();
+    updateUser = jest.fn();
     whereUser = jest.fn((filter: { id?: string }) =>
-      filter.id ? { first: findRefreshUser } : { first: findUser },
+      filter.id
+        ? { first: findRefreshUser, update: updateUser }
+        : { first: findUser, update: updateUser },
     );
     findRefreshSession = jest.fn();
     updateRefreshSession = jest.fn();
@@ -99,6 +106,8 @@ describe('AuthService', () => {
     hashPassword = jest.fn().mockResolvedValue('argon2-hash');
     verifyPassword = jest.fn().mockResolvedValue(true);
     issueAccessToken = jest.fn().mockResolvedValue('signed-access');
+    sendVerificationEmail = jest.fn().mockResolvedValue(undefined);
+    verifyEmailToken = jest.fn();
 
     service = new AuthService(
       {
@@ -118,12 +127,15 @@ describe('AuthService', () => {
         verify: verifyPassword,
       },
       { issue: issueAccessToken } as unknown as AccessTokenService,
+      {
+        sendVerificationEmail,
+        verifyToken: verifyEmailToken,
+      } as unknown as EmailVerificationService,
       new ConfigService({ REFRESH_SESSION_TTL_SECONDS: 2592000 }),
     );
   });
 
-  it('creates a default-role user and stores only a refresh-token hash', async () => {
-    const before = Date.now();
+  it('creates an unverified default-role user and sends a verification email', async () => {
     const result = await service.register(
       ' Person@Example.com ',
       'long password',
@@ -143,23 +155,15 @@ describe('AuthService', () => {
       userId: user.id,
       roleId: role.id,
     });
-    expect(refreshSessionData).toBeDefined();
-    expect(refreshSessionData?.tokenHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(refreshSessionData?.tokenHash).not.toBe(result.refreshToken);
-    expect(refreshSessionData?.userId).toBe(user.id);
-    expect(Date.parse(refreshSessionData!.expiresAt)).toBeGreaterThanOrEqual(
-      before + 2592000000,
-    );
-    expect(Date.parse(refreshSessionData!.expiresAt)).toBeLessThanOrEqual(
-      Date.now() + 2592000000,
-    );
-    expect(typeof result.refreshToken).toBe('string');
-    expect(result).toEqual({
-      user,
-      accessToken: 'signed-access',
-      refreshToken: result.refreshToken,
+    expect(sendVerificationEmail).toHaveBeenCalledWith({
+      userId: user.id,
+      clientId,
+      email: user.email,
     });
-    expect(issueAccessToken).toHaveBeenCalledWith(user.id, clientId);
+    expect(refreshSessionData).toBeUndefined();
+    expect(createSession).not.toHaveBeenCalled();
+    expect(issueAccessToken).not.toHaveBeenCalled();
+    expect(result).toEqual(user);
   });
 
   it('returns a generic conflict for duplicate registration', async () => {
@@ -176,6 +180,7 @@ describe('AuthService', () => {
       service.register('person@example.com', 'long password', clientId),
     ).rejects.toThrow('Registration could not be completed.');
     expect(issueAccessToken).not.toHaveBeenCalled();
+    expect(sendVerificationEmail).not.toHaveBeenCalled();
   });
 
   it('does not hide unexpected database errors', async () => {
@@ -192,6 +197,7 @@ describe('AuthService', () => {
       passwordHash: 'argon2-hash',
       status: 'ACTIVE',
       clientId,
+      emailVerifiedAt: new Date().toISOString(),
     });
     const before = Date.now();
 
@@ -236,6 +242,7 @@ describe('AuthService', () => {
       passwordHash: 'argon2-hash',
       status: 'ACTIVE',
       clientId,
+      emailVerifiedAt: new Date().toISOString(),
     });
     verifyPassword.mockResolvedValue(false);
 
@@ -252,8 +259,25 @@ describe('AuthService', () => {
       passwordHash: 'argon2-hash',
       status: 'DISABLED',
       clientId,
+      emailVerifiedAt: new Date().toISOString(),
     });
     verifyPassword.mockResolvedValue(true);
+
+    await expect(
+      service.login(user.email, 'correct password', clientId),
+    ).rejects.toThrow('Invalid email or password.');
+    expect(createSession).not.toHaveBeenCalled();
+    expect(issueAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unverified user before creating a session', async () => {
+    findUser.mockResolvedValue({
+      ...user,
+      passwordHash: 'argon2-hash',
+      status: 'ACTIVE',
+      clientId,
+      emailVerifiedAt: null,
+    });
 
     await expect(
       service.login(user.email, 'correct password', clientId),
@@ -269,6 +293,7 @@ describe('AuthService', () => {
         status: 'ACTIVE',
         clientId,
         passwordHash: 'must-not-be-returned',
+        emailVerifiedAt: new Date().toISOString(),
       });
 
       await expect(service.getCurrentUser(user.id, clientId)).resolves.toEqual(
@@ -280,12 +305,109 @@ describe('AuthService', () => {
     it.each([
       ['a missing user', null],
       ['a disabled user', { ...user, status: 'DISABLED', clientId }],
+      [
+        'an unverified user',
+        { ...user, status: 'ACTIVE', clientId, emailVerifiedAt: null },
+      ],
     ])('rejects %s', async (_case, foundUser) => {
       findRefreshUser.mockResolvedValue(foundUser);
 
       await expect(service.getCurrentUser(user.id, clientId)).rejects.toThrow(
         UnauthorizedException,
       );
+    });
+  });
+
+  describe('verifyEmail', () => {
+    const claims = {
+      userId: user.id,
+      clientId,
+      email: user.email,
+    };
+
+    beforeEach(() => {
+      verifyEmailToken.mockResolvedValue(claims);
+      updateUser.mockResolvedValue({
+        ...user,
+        emailVerifiedAt: new Date().toISOString(),
+      });
+    });
+
+    it('marks the matching active unverified user as verified', async () => {
+      await expect(
+        service.verifyEmail('signed-verification-token', clientId),
+      ).resolves.toBeUndefined();
+
+      expect(verifyEmailToken).toHaveBeenCalledWith(
+        'signed-verification-token',
+      );
+      expect(whereUser).toHaveBeenCalledWith({
+        id: user.id,
+        clientId,
+        email: user.email,
+        status: 'ACTIVE',
+        emailVerifiedAt: null,
+      });
+      expect(updateUser).toHaveBeenCalledWith({
+        emailVerifiedAt: expect.any(String),
+      });
+    });
+
+    it('rejects a verification token used with a different client', async () => {
+      await expect(
+        service.verifyEmail('signed-verification-token', 'another-client'),
+      ).rejects.toThrow('Invalid or expired verification token.');
+      expect(updateUser).not.toHaveBeenCalled();
+    });
+
+    it('rejects already-used verification tokens', async () => {
+      updateUser.mockResolvedValue(null);
+
+      await expect(
+        service.verifyEmail('signed-verification-token', clientId),
+      ).rejects.toThrow('Invalid or expired verification token.');
+    });
+  });
+
+  describe('resendVerificationEmail', () => {
+    it('sends only for an active unverified account', async () => {
+      findUser.mockResolvedValue({
+        ...user,
+        clientId,
+        status: 'ACTIVE',
+        emailVerifiedAt: null,
+      });
+
+      await service.resendVerificationEmail(' Person@Example.com ', clientId);
+
+      expect(whereUser).toHaveBeenCalledWith({
+        clientId,
+        email: 'person@example.com',
+      });
+      expect(sendVerificationEmail).toHaveBeenCalledWith({
+        userId: user.id,
+        clientId,
+        email: user.email,
+      });
+    });
+
+    it('does not send for unknown or verified users', async () => {
+      findUser.mockResolvedValue(null);
+      await expect(
+        service.resendVerificationEmail(user.email, clientId),
+      ).resolves.toBeUndefined();
+
+      findUser.mockResolvedValue({
+        ...user,
+        clientId,
+        status: 'ACTIVE',
+        emailVerifiedAt: new Date().toISOString(),
+      });
+      await expect(
+        service.resendVerificationEmail(user.email, clientId),
+      ).resolves.toBeUndefined();
+
+      expect(sendVerificationEmail).not.toHaveBeenCalled();
     });
   });
 
@@ -306,6 +428,7 @@ describe('AuthService', () => {
         ...user,
         status: 'ACTIVE',
         clientId,
+        emailVerifiedAt: new Date().toISOString(),
       });
     });
 
@@ -379,6 +502,7 @@ describe('AuthService', () => {
         ...user,
         status: 'ACTIVE',
         clientId,
+        emailVerifiedAt: new Date().toISOString(),
       });
     });
 
@@ -428,6 +552,23 @@ describe('AuthService', () => {
         'Invalid or expired refresh token.',
       );
       expect(updateRefreshSession).not.toHaveBeenCalled();
+      expect(refreshSessionData).toBeUndefined();
+    });
+
+    it('rejects and revokes sessions for unverified users', async () => {
+      findRefreshUser.mockResolvedValue({
+        ...user,
+        status: 'ACTIVE',
+        clientId,
+        emailVerifiedAt: null,
+      });
+
+      await expect(service.refresh(existingToken, clientId)).rejects.toThrow(
+        'Invalid or expired refresh token.',
+      );
+      expect(updateRefreshSession).toHaveBeenCalledWith({
+        revokedAt: expect.any(String),
+      });
       expect(refreshSessionData).toBeUndefined();
     });
 

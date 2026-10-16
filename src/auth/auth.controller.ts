@@ -16,17 +16,21 @@ import { AuthCookiesService } from './auth-cookies.service.js';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
+import { ResendVerificationDto } from './dto/resend-verification.dto.js';
+import { VerifyEmailDto } from './dto/verify-email.dto.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { TrustedOriginGuard } from './guards/trusted-origin.guard.js';
 import type { AuthenticatedUser } from './strategies/jwt.strategy.js';
 import {
   AUTH_THROTTLE_WINDOW_MS,
   CLIENT_ID_HEADER,
+  EMAIL_VERIFICATION_RATE_LIMIT,
   LOGIN_RATE_LIMIT,
   LOGOUT_RATE_LIMIT,
   REFRESH_RATE_LIMIT,
   REFRESH_TOKEN_COOKIE,
   REGISTER_RATE_LIMIT,
+  RESEND_VERIFICATION_RATE_LIMIT,
 } from './auth.constants.js';
 
 @ApiTags('Authentication')
@@ -71,7 +75,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Register a user',
     description:
-      'Creates a user with the default role and sets access and refresh HttpOnly cookies. Tokens are not returned in the response body.',
+      'Creates an unverified user and sends a verification email. Authentication cookies are set only after the user verifies their email and logs in.',
   })
   @ApiHeader({
     name: CLIENT_ID_HEADER,
@@ -81,15 +85,62 @@ export class AuthController {
   async register(
     @Body() dto: RegisterDto,
     @Headers(CLIENT_ID_HEADER) clientId: string,
-    @Res({ passthrough: true }) response: Response,
   ): Promise<{ id: string; email: string }> {
-    const result = await this.auth.register(dto.email, dto.password, clientId);
-    this.cookies.setAuthenticationCookies(
-      response,
-      result.accessToken,
-      result.refreshToken,
-    );
-    return result.user;
+    return this.auth.register(dto.email, dto.password, clientId);
+  }
+
+  @Post('verify-email')
+  @UseGuards(ThrottlerGuard, TrustedOriginGuard)
+  @Throttle({
+    default: {
+      limit: EMAIL_VERIFICATION_RATE_LIMIT,
+      ttl: AUTH_THROTTLE_WINDOW_MS,
+    },
+  })
+  @ApiOperation({
+    summary: 'Verify an email address',
+    description:
+      'Verifies the email using the short-lived token sent by email. Successful verification enables login.',
+  })
+  @ApiHeader({
+    name: CLIENT_ID_HEADER,
+    description: 'Public ID of the registered application client.',
+    required: true,
+  })
+  async verifyEmail(
+    @Body() dto: VerifyEmailDto,
+    @Headers(CLIENT_ID_HEADER) clientId: string,
+  ): Promise<{ verified: true }> {
+    await this.auth.verifyEmail(dto.token, clientId);
+    return { verified: true };
+  }
+
+  @Post('resend-verification')
+  @UseGuards(ThrottlerGuard, TrustedOriginGuard)
+  @Throttle({
+    default: {
+      limit: RESEND_VERIFICATION_RATE_LIMIT,
+      ttl: AUTH_THROTTLE_WINDOW_MS,
+    },
+  })
+  @ApiOperation({
+    summary: 'Resend email verification',
+    description:
+      'Sends another verification message when the account exists and is not already verified. The response does not reveal account existence.',
+  })
+  @ApiHeader({
+    name: CLIENT_ID_HEADER,
+    description: 'Public ID of the registered application client.',
+    required: true,
+  })
+  async resendVerification(
+    @Body() dto: ResendVerificationDto,
+    @Headers(CLIENT_ID_HEADER) clientId: string,
+  ): Promise<{ message: string }> {
+    await this.auth.resendVerificationEmail(dto.email, clientId);
+    return {
+      message: 'If the account is eligible, a verification email was sent.',
+    };
   }
 
   @Post('login')
