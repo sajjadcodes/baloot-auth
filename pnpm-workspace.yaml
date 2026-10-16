@@ -1,3 +1,7 @@
 allowBuilds:
-  '@parcel/watcher': set this to true or false
-  unrs-resolver: set this to true or false
+  '@parcel/watcher': true
+  '@prisma/engines': true
+  '@scarf/scarf': true
+  pnpm: true
+  prisma: true
+  unrs-resolver: true
