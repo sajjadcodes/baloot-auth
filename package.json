@@ -10,6 +10,7 @@
     "build": "nest build",
     "contract:emit": "prisma contract emit",
     "db:seed": "tsx prisma/seed.ts",
+    "db:role:revoke": "tsx prisma/revoke-platform-admin.ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",

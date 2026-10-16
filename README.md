@@ -115,7 +115,13 @@ Register and verify the intended administrator through the normal email-verifica
 SEED_PLATFORM_ADMIN_USERS_JSON=[{"clientId":"00000000-0000-4000-8000-000000000001","email":"admin@example.com"}]
 ```
 
-Run `pnpm db:seed` as an explicit privileged operator action. The seed only grants the role to an existing active, verified user attached to a client also present in `SEED_CLIENTS_JSON`, and it is idempotent. Removing an entry from the environment does not revoke an existing role; role revocation must use the approved trusted administrative process. Never expose this seed configuration through a public API or commit it to Git.
+Run `pnpm db:seed` as an explicit privileged operator action. The seed only grants the role to an existing active, verified user attached to a client also present in `SEED_CLIENTS_JSON`, and it is idempotent. Removing an entry from the environment does not revoke an existing role. Revoke an assignment with the dedicated operator command:
+
+```bash
+pnpm db:role:revoke -- --client-id 00000000-0000-4000-8000-000000000001 --email admin@example.com --confirm
+```
+
+The command requires an exact client UUID, normalized account email, and the explicit `--confirm` flag; it removes only that user's `platform_admin` assignment for that client. If the role has already been removed, it reports that no assignment exists. The operation is transactional and does not revoke other roles or refresh sessions; role guards read assignments from the database, so the admin privilege is removed immediately. Never expose role provisioning or revocation through a public API.
 
 ## JWT Access-Token Foundation
 
