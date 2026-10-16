@@ -44,6 +44,71 @@ describe('AuthController', () => {
     expect(requiredRoles).toEqual(['user', 'platform_admin']);
   });
 
+  it('protects admin user lookup with the platform_admin role', () => {
+    const guards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      AuthController.prototype.getAdminUser,
+    );
+    const requiredRoles = Reflect.getMetadata(
+      ROLES_KEY,
+      AuthController.prototype.getAdminUser,
+    );
+
+    expect(guards).toContain(TrustedOriginGuard);
+    expect(guards).toContain(RolesGuard);
+    expect(requiredRoles).toEqual(['platform_admin']);
+  });
+
+  it('returns the requested account only for the matching client', async () => {
+    const result = {
+      id: 'target-user',
+      email: 'person@example.com',
+      status: 'ACTIVE',
+      emailVerifiedAt: '2026-01-01T00:00:00.000Z',
+      createdAt: '2025-12-01T00:00:00.000Z',
+      roles: ['user'],
+    };
+    const getClientUserForAdmin = jest.fn().mockResolvedValue(result);
+    const controller = new AuthController(
+      { getClientUserForAdmin } as unknown as AuthService,
+      {} as AuthCookiesService,
+    );
+    const clientId = '00000000-0000-4000-8000-000000000001';
+
+    await expect(
+      controller.getAdminUser(
+        { user: { userId: 'admin-user', clientId } } as Request & {
+          user: { userId: string; clientId: string };
+        },
+        clientId,
+        result.id,
+      ),
+    ).resolves.toEqual(result);
+    expect(getClientUserForAdmin).toHaveBeenCalledWith(result.id, clientId);
+  });
+
+  it('rejects an admin lookup when the header client differs from the token', async () => {
+    const getClientUserForAdmin = jest.fn();
+    const controller = new AuthController(
+      { getClientUserForAdmin } as unknown as AuthService,
+      {} as AuthCookiesService,
+    );
+
+    await expect(
+      controller.getAdminUser(
+        {
+          user: {
+            userId: 'admin-user',
+            clientId: '00000000-0000-4000-8000-000000000001',
+          },
+        } as Request & { user: { userId: string; clientId: string } },
+        '00000000-0000-4000-8000-000000000002',
+        'target-user',
+      ),
+    ).rejects.toThrow('Invalid or expired access token.');
+    expect(getClientUserForAdmin).not.toHaveBeenCalled();
+  });
+
   it('requests password reset without revealing account eligibility', async () => {
     const requestPasswordReset = jest.fn().mockResolvedValue(undefined);
     const auth = { requestPasswordReset } as unknown as AuthService;

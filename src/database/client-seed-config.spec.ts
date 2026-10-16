@@ -1,5 +1,8 @@
 import 'reflect-metadata';
-import { parseClientSeedConfig } from './client-seed-config.js';
+import {
+  parseClientSeedConfig,
+  parsePlatformAdminSeedConfig,
+} from './client-seed-config.js';
 
 describe('parseClientSeedConfig', () => {
   const firstClientId = '00000000-0000-4000-8000-000000000001';
@@ -34,6 +37,44 @@ describe('parseClientSeedConfig', () => {
         origins: ['https://second.example', 'http://localhost:5174'],
       },
     ]);
+  });
+
+  describe('parsePlatformAdminSeedConfig', () => {
+    const clientId = '00000000-0000-4000-8000-000000000001';
+    const clients = [
+      { id: clientId, name: 'App', origins: ['https://app.example'] },
+    ];
+
+    it('allows an empty config and normalizes valid admin emails', () => {
+      expect(parsePlatformAdminSeedConfig(undefined, clients)).toEqual([]);
+      expect(
+        parsePlatformAdminSeedConfig(
+          JSON.stringify([{ clientId, email: ' Admin@Example.com ' }]),
+          clients,
+        ),
+      ).toEqual([{ clientId, email: 'admin@example.com' }]);
+    });
+
+    it.each([
+      ['not-json', 'valid JSON'],
+      ['{}', 'JSON array'],
+      [
+        JSON.stringify([{ clientId: 'bad', email: 'admin@example.com' }]),
+        'client',
+      ],
+      [JSON.stringify([{ clientId, email: 'not-an-email' }]), 'valid email'],
+      [
+        JSON.stringify([
+          { clientId, email: 'admin@example.com' },
+          { clientId, email: 'ADMIN@example.com' },
+        ]),
+        'duplicate assignment',
+      ],
+    ])('rejects unsafe admin seed config: %p', (json, message) => {
+      expect(() => parsePlatformAdminSeedConfig(json, clients)).toThrow(
+        message,
+      );
+    });
   });
 
   it.each([

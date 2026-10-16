@@ -3,6 +3,8 @@ import {
   Controller,
   Get,
   Headers,
+  Param,
+  ParseUUIDPipe,
   Post,
   Req,
   Res,
@@ -10,10 +12,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
-import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiHeader, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
+import { Roles } from './decorators/roles.decorator.js';
 import { AuthCookiesService } from './auth-cookies.service.js';
-import { AuthService } from './auth.service.js';
+import { AuthService, type AdminUserInfo } from './auth.service.js';
 import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
@@ -24,7 +27,6 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { RolesGuard } from './guards/roles.guard.js';
 import { TrustedOriginGuard } from './guards/trusted-origin.guard.js';
 import type { AuthenticatedUser } from './strategies/jwt.strategy.js';
-import { Roles } from './decorators/roles.decorator.js';
 import {
   AUTH_THROTTLE_WINDOW_MS,
   CLIENT_ID_HEADER,
@@ -69,6 +71,36 @@ export class AuthController {
     }
 
     return this.auth.getCurrentUser(request.user.userId, clientId);
+  }
+
+  @Get('admin/users/:userId')
+  @UseGuards(ThrottlerGuard, TrustedOriginGuard, JwtAuthGuard, RolesGuard)
+  @Roles('platform_admin')
+  @ApiOperation({
+    summary: 'Get a user account for administration',
+    description:
+      'Returns account status, verification time, creation time, and assigned global roles for a user belonging to the authenticated admin’s client.',
+  })
+  @ApiHeader({
+    name: CLIENT_ID_HEADER,
+    description: 'Public ID of the registered application client.',
+    required: true,
+  })
+  @ApiParam({
+    name: 'userId',
+    description: 'UUID of a user belonging to the authenticated client.',
+    format: 'uuid',
+  })
+  async getAdminUser(
+    @Req() request: Request & { user: AuthenticatedUser },
+    @Headers(CLIENT_ID_HEADER) clientId: string,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+  ): Promise<AdminUserInfo> {
+    if (request.user.clientId !== clientId) {
+      throw new UnauthorizedException('Invalid or expired access token.');
+    }
+
+    return this.auth.getClientUserForAdmin(userId, clientId);
   }
 
   @Post('register')

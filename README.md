@@ -97,14 +97,25 @@ pnpm db:seed
 pnpm start:dev
 ```
 
-After the maintainer has provisioned the database from the contract, configure `SEED_CLIENTS_JSON` and `CORS_ORIGINS` in `.env`, then run `pnpm db:seed` to provision the client records and the default `user` role required for registration. Each client needs a stable UUID; configure that same public ID in its frontend. Client IDs identify an application but are not secrets. The seed updates existing client names and adds missing client/origin/role records without removing existing origins. Do not commit real `.env` values. The database has not been initialized from the contract. Database migrations remain under maintainer control and must not be created, planned, or applied without explicit approval.
+After the maintainer has provisioned the database from the contract, configure `SEED_CLIENTS_JSON` and `CORS_ORIGINS` in `.env`, then run `pnpm db:seed` to provision the client records and built-in roles required for registration and authorization. Each client needs a stable UUID; configure that same public ID in its frontend. Client IDs identify an application but are not secrets. The seed updates existing client names and adds missing client/origin/role records without removing existing origins. Do not commit real `.env` values. The database has not been initialized from the contract. Database migrations remain under maintainer control and must not be created, planned, or applied without explicit approval.
 
 For example, keep the JSON in the local `.env` as a single-line value (replace example values with deployment configuration):
 
 ```dotenv
 CORS_ORIGINS=http://localhost:5173,https://app.example.com
 SEED_CLIENTS_JSON=[{"id":"00000000-0000-4000-8000-000000000001","name":"Example app","origins":["http://localhost:5173","https://app.example.com"]}]
+SEED_PLATFORM_ADMIN_USERS_JSON=[]
 ```
+
+### Provisioning a Platform Administrator
+
+Register and verify the intended administrator through the normal email-verification flow first. Then, in a trusted, untracked deployment `.env` or operator environment, set `SEED_PLATFORM_ADMIN_USERS_JSON` to entries containing the client UUID and the verified account email, for example:
+
+```dotenv
+SEED_PLATFORM_ADMIN_USERS_JSON=[{"clientId":"00000000-0000-4000-8000-000000000001","email":"admin@example.com"}]
+```
+
+Run `pnpm db:seed` as an explicit privileged operator action. The seed only grants the role to an existing active, verified user attached to a client also present in `SEED_CLIENTS_JSON`, and it is idempotent. Removing an entry from the environment does not revoke an existing role; role revocation must use the approved trusted administrative process. Never expose this seed configuration through a public API or commit it to Git.
 
 ## JWT Access-Token Foundation
 
@@ -164,17 +175,18 @@ The root `GET /` and authentication routes listed below are implemented. Success
 
 The authentication endpoint status is:
 
-| Method | Endpoint                    | Purpose                                                         |
-| ------ | --------------------------- | --------------------------------------------------------------- |
-| `POST` | `/auth/register`            | Implemented: create an account and send verification email      |
-| `POST` | `/auth/verify-email`        | Implemented: verify an email address                            |
-| `POST` | `/auth/resend-verification` | Implemented: resend verification email                          |
-| `POST` | `/auth/login`               | Implemented: authenticate a user and set authentication cookies |
-| `POST` | `/auth/refresh`             | Implemented: rotate tokens and set authentication cookies       |
-| `POST` | `/auth/logout`              | Implemented: revoke the refresh session and clear cookies       |
-| `GET`  | `/auth/me`                  | Implemented: retrieve the authenticated user's information      |
-| `POST` | `/auth/forgot-password`     | Implemented: request a password reset                           |
-| `POST` | `/auth/reset-password`      | Implemented: reset a password                                   |
+| Method | Endpoint                    | Purpose                                                          |
+| ------ | --------------------------- | ---------------------------------------------------------------- |
+| `POST` | `/auth/register`            | Implemented: create an account and send verification email       |
+| `POST` | `/auth/verify-email`        | Implemented: verify an email address                             |
+| `POST` | `/auth/resend-verification` | Implemented: resend verification email                           |
+| `POST` | `/auth/login`               | Implemented: authenticate a user and set authentication cookies  |
+| `POST` | `/auth/refresh`             | Implemented: rotate tokens and set authentication cookies        |
+| `POST` | `/auth/logout`              | Implemented: revoke the refresh session and clear cookies        |
+| `GET`  | `/auth/me`                  | Implemented: retrieve the authenticated user's information       |
+| `GET`  | `/auth/admin/users/:userId` | Implemented: inspect a same-client account (platform admin only) |
+| `POST` | `/auth/forgot-password`     | Implemented: request a password reset                            |
+| `POST` | `/auth/reset-password`      | Implemented: reset a password                                    |
 
 Refer to Swagger for the exact request formats, response contracts, validation requirements, and error codes.
 
@@ -240,13 +252,13 @@ Baloot Auth begins with two global roles:
 
 Public registration cannot assign privileged roles.
 
-The `@Roles(...)` decorator and `RolesGuard` support role-based access checks. The guard checks active, verified account status and current role assignments in the database rather than relying on role claims in access tokens. `GET /auth/me` requires either the `user` or `platform_admin` role. Apply `JwtAuthGuard` before `RolesGuard` on protected routes so the request has a validated identity.
+The `@Roles(...)` decorator and `RolesGuard` support role-based access checks. The guard checks active, verified account status and current role assignments in the database rather than relying on role claims in access tokens. `GET /auth/me` requires either the `user` or `platform_admin` role. `GET /auth/admin/users/:userId` requires `platform_admin`, validates the requested UUID, and returns only account status, email-verification time, creation time, and built-in role names for users belonging to the administrator's own client. The endpoint also requires that the public `X-Client-Id` match the admin's access token and that the browser origin is trusted. It deliberately offers no cross-client access, user listing, role mutation, or account mutation. Apply `JwtAuthGuard` before `RolesGuard` on protected routes so the request has a validated identity.
 
 These roles provide basic authorization. Applications using Baloot Auth remain responsible for their own business rules and resource-level permissions.
 
 A valid identity does not automatically authorize access to every resource.
 
-Administrative operations and role-management endpoints are not implemented. Assigning `platform_admin` must remain restricted to a trusted administrative process; never expose role escalation through public registration or client-controlled inputs.
+Role assignment and account mutation endpoints are not implemented. Assigning `platform_admin` must remain restricted to the trusted seed workflow or another approved administrative process; never expose role escalation through public registration or client-controlled inputs.
 
 ## Database and Migrations
 

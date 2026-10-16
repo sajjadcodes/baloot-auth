@@ -1,6 +1,9 @@
 import 'dotenv/config';
 import postgres from '@prisma/orm-postgres/runtime';
-import { parseClientSeedConfig } from '../src/database/client-seed-config.js';
+import {
+  parseClientSeedConfig,
+  parsePlatformAdminSeedConfig,
+} from '../src/database/client-seed-config.js';
 import type { Contract } from '../src/prisma/contract.d.js';
 import contractJson from '../src/prisma/contract.json' with { type: 'json' };
 import { toVarchar } from '../src/prisma/varchar.js';
@@ -14,6 +17,10 @@ if (!databaseUrl) {
 const clients = parseClientSeedConfig(
   process.env.SEED_CLIENTS_JSON,
   process.env.CORS_ORIGINS,
+);
+const platformAdmins = parsePlatformAdminSeedConfig(
+  process.env.SEED_PLATFORM_ADMIN_USERS_JSON,
+  clients,
 );
 const prisma = postgres<Contract>({
   contractJson,
@@ -50,11 +57,46 @@ async function seed(): Promise<void> {
     }
   }
 
-  const userRole = await models.Role.where({
-    name: toVarchar('user', 64),
-  }).first();
-  if (!userRole) {
-    await models.Role.create({ name: toVarchar('user', 64) });
+  for (const name of ['user', 'platform_admin']) {
+    const role = await models.Role.where({ name: toVarchar(name, 64) }).first();
+    if (!role) {
+      await models.Role.create({ name: toVarchar(name, 64) });
+    }
+  }
+
+  for (const admin of platformAdmins) {
+    await prisma.transaction(async (transaction) => {
+      const user = await transaction.orm.public.User.where({
+        clientId: admin.clientId,
+        email: toVarchar(admin.email, 320),
+      }).first();
+
+      if (!user || user.status !== 'ACTIVE' || !user.emailVerifiedAt) {
+        throw new Error(
+          `Cannot grant platform_admin: active, verified user "${admin.email}" was not found for client "${admin.clientId}".`,
+        );
+      }
+
+      const role = await transaction.orm.public.Role.where({
+        name: toVarchar('platform_admin', 64),
+      }).first();
+
+      if (!role) {
+        throw new Error('The platform_admin role could not be provisioned.');
+      }
+
+      const assignment = await transaction.orm.public.UserRole.where({
+        userId: user.id,
+        roleId: role.id,
+      }).first();
+
+      if (!assignment) {
+        await transaction.orm.public.UserRole.create({
+          userId: user.id,
+          roleId: role.id,
+        });
+      }
+    });
   }
 }
 

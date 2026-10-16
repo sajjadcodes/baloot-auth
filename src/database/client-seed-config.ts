@@ -1,9 +1,73 @@
+import { isEmail } from 'class-validator';
 import { CLIENT_ID_PATTERN } from '../auth/auth.constants.js';
 
 export interface SeedClient {
   id: string;
   name: string;
   origins: string[];
+}
+
+export interface SeedPlatformAdmin {
+  clientId: string;
+  email: string;
+}
+
+export function parsePlatformAdminSeedConfig(
+  adminsJson: string | undefined,
+  clients: SeedClient[],
+): SeedPlatformAdmin[] {
+  if (adminsJson === undefined || adminsJson.trim() === '') {
+    return [];
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(adminsJson);
+  } catch {
+    throw new Error('SEED_PLATFORM_ADMIN_USERS_JSON must contain valid JSON.');
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error('SEED_PLATFORM_ADMIN_USERS_JSON must be a JSON array.');
+  }
+
+  const clientIds = new Set(clients.map((client) => client.id));
+  const seenAssignments = new Set<string>();
+
+  return parsed.map((value: unknown, index: number): SeedPlatformAdmin => {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      throw new Error(
+        `SEED_PLATFORM_ADMIN_USERS_JSON item ${index + 1} must be an object.`,
+      );
+    }
+
+    const admin = value as Record<string, unknown>;
+    const clientId =
+      typeof admin.clientId === 'string' ? admin.clientId.trim() : '';
+    const email =
+      typeof admin.email === 'string' ? admin.email.trim().toLowerCase() : '';
+
+    if (!CLIENT_ID_PATTERN.test(clientId) || !clientIds.has(clientId)) {
+      throw new Error(
+        `SEED_PLATFORM_ADMIN_USERS_JSON item ${index + 1} must reference a client in SEED_CLIENTS_JSON.`,
+      );
+    }
+    if (email.length > 320 || !isEmail(email)) {
+      throw new Error(
+        `SEED_PLATFORM_ADMIN_USERS_JSON item ${index + 1} must have a valid email.`,
+      );
+    }
+
+    const assignment = `${clientId}:${email}`;
+    if (seenAssignments.has(assignment)) {
+      throw new Error(
+        `SEED_PLATFORM_ADMIN_USERS_JSON contains duplicate assignment for "${email}".`,
+      );
+    }
+    seenAssignments.add(assignment);
+
+    return { clientId, email };
+  });
 }
 
 // Validate deployment-provided client data before the seed script writes it.

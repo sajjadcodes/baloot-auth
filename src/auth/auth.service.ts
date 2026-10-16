@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -22,6 +23,13 @@ import { PasswordService } from './password.service.js';
 export interface AuthenticatedUserInfo {
   id: string;
   email: string;
+}
+
+export interface AdminUserInfo extends AuthenticatedUserInfo {
+  status: 'ACTIVE' | 'DISABLED';
+  emailVerifiedAt: string | null;
+  createdAt: string;
+  roles: string[];
 }
 
 export type RegistrationResult = AuthenticatedUserInfo;
@@ -188,6 +196,43 @@ export class AuthService {
     }
 
     return { id: user.id, email: user.email };
+  }
+
+  async getClientUserForAdmin(
+    targetUserId: string,
+    clientId: string,
+  ): Promise<AdminUserInfo> {
+    const user = await this.prisma.public.User.where({
+      id: targetUserId,
+      clientId,
+    }).first();
+
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    const roles: string[] = [];
+    for (const roleName of ['user', 'platform_admin']) {
+      const assignment = await this.prisma.public.UserRole.include(
+        'role',
+        (role) => role.where({ name: toVarchar(roleName, 64) }),
+      )
+        .where({ userId: user.id })
+        .first();
+
+      if (assignment) {
+        roles.push(roleName);
+      }
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      status: user.status,
+      emailVerifiedAt: user.emailVerifiedAt,
+      createdAt: user.createdAt,
+      roles,
+    };
   }
 
   async resendVerificationEmail(

@@ -16,6 +16,8 @@ describe('AuthService', () => {
   let service: AuthService;
   let findUser: jest.Mock;
   let findRefreshUser: jest.Mock;
+  let findRoleAssignment: jest.Mock;
+  let includeRoleAssignment: jest.Mock;
   let updateUser: jest.Mock;
   let whereUser: jest.Mock;
   let findRefreshSession: jest.Mock;
@@ -66,6 +68,21 @@ describe('AuthService', () => {
     findUser = jest.fn();
     findRefreshUser = jest.fn();
     updateUser = jest.fn();
+    findRoleAssignment = jest.fn();
+    includeRoleAssignment = jest.fn(
+      (
+        _relation: string,
+        buildQuery: (query: { where: jest.Mock }) => unknown,
+      ) => {
+        const whereRole = jest.fn((filter: { name: string }) => filter.name);
+        const roleName = buildQuery({ where: whereRole }) as string;
+        return {
+          where: jest.fn(() => ({
+            first: jest.fn(() => findRoleAssignment(roleName)),
+          })),
+        };
+      },
+    );
     whereUser = jest.fn((filter: { id?: string }) =>
       filter.id
         ? { first: findRefreshUser, update: updateUser }
@@ -117,6 +134,7 @@ describe('AuthService', () => {
           User: {
             where: whereUser,
           },
+          UserRole: { include: includeRoleAssignment },
           RefreshSession: {
             create: createSession,
             where: whereRefreshSession,
@@ -320,6 +338,46 @@ describe('AuthService', () => {
       await expect(service.getCurrentUser(user.id, clientId)).rejects.toThrow(
         UnauthorizedException,
       );
+    });
+  });
+
+  describe('getClientUserForAdmin', () => {
+    it('returns account status and assigned roles for a user in the client', async () => {
+      findRefreshUser.mockResolvedValue({
+        ...user,
+        clientId,
+        status: 'ACTIVE',
+        emailVerifiedAt: '2026-01-01T00:00:00.000Z',
+        createdAt: '2025-12-01T00:00:00.000Z',
+        passwordHash: 'must-not-be-returned',
+      });
+      findRoleAssignment.mockImplementation((name: string) =>
+        Promise.resolve(
+          name === 'platform_admin' ? { id: 'assignment' } : null,
+        ),
+      );
+
+      await expect(
+        service.getClientUserForAdmin(user.id, clientId),
+      ).resolves.toEqual({
+        id: user.id,
+        email: user.email,
+        status: 'ACTIVE',
+        emailVerifiedAt: '2026-01-01T00:00:00.000Z',
+        createdAt: '2025-12-01T00:00:00.000Z',
+        roles: ['platform_admin'],
+      });
+      expect(whereUser).toHaveBeenCalledWith({ id: user.id, clientId });
+      expect(includeRoleAssignment).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not reveal a user outside the requested client', async () => {
+      findRefreshUser.mockResolvedValue(null);
+
+      await expect(
+        service.getClientUserForAdmin(user.id, clientId),
+      ).rejects.toThrow('User not found.');
+      expect(includeRoleAssignment).not.toHaveBeenCalled();
     });
   });
 
