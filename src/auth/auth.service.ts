@@ -177,6 +177,22 @@ export class AuthService {
     }).update({ revokedAt: new Date().toISOString() });
   }
 
+  async getCurrentUser(
+    userId: string,
+    clientId: string,
+  ): Promise<{ id: string; email: string }> {
+    const user = await this.prisma.public.User.where({
+      id: userId,
+      clientId,
+    }).first();
+
+    if (!user || user.status !== 'ACTIVE') {
+      throw new UnauthorizedException('Invalid or expired access token.');
+    }
+
+    return { id: user.id, email: user.email };
+  }
+
   async refresh(refreshToken: string, clientId: string): Promise<LoginResult> {
     // Validate the opaque token before querying storage; only its hash is persisted.
     if (!REFRESH_TOKEN_PATTERN.test(refreshToken)) {

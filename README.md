@@ -8,7 +8,7 @@ It is designed to remain independent of any specific product, company, or busine
 
 ## Implementation Status
 
-The current foundation includes validated startup configuration, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, a Prisma ORM 8 PostgreSQL contract and runtime, Argon2id password hashing, short-lived JWT access-token issuance with a Passport JWT strategy, and a globally applied success-response interceptor and exception filter. Application clients have registered origins; users, email uniqueness, authentication requests, and access tokens are scoped to one client. The root health response and `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, and `POST /auth/logout` are implemented. Current-user, email verification, password reset, and authorization endpoints are not yet available.
+The current foundation includes validated startup configuration, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, a Prisma ORM 8 PostgreSQL contract and runtime, Argon2id password hashing, short-lived JWT access-token issuance with a Passport JWT strategy, and a globally applied success-response interceptor and exception filter. Application clients have registered origins; users, email uniqueness, authentication requests, and access tokens are scoped to one client. The root health response and `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, and `GET /auth/me` are implemented. Email verification, password reset, and authorization endpoints are not yet available.
 
 HTTP responses use a globally applied envelope: successful responses contain `success`, the HTTP `code`, a `message`, and endpoint `data`; errors contain `success: false`, the HTTP `code`, and a safe `message`. Unexpected server errors are logged server-side without stack traces or exception messages and returned to clients as a generic internal-server-error message.
 
@@ -165,7 +165,7 @@ The authentication endpoint status is:
 | `POST` | `/auth/login`           | Implemented: authenticate a user and set authentication cookies |
 | `POST` | `/auth/refresh`         | Implemented: rotate tokens and set authentication cookies       |
 | `POST` | `/auth/logout`          | Implemented: revoke the refresh session and clear cookies       |
-| `GET`  | `/auth/me`              | Planned: retrieve the authenticated user's information          |
+| `GET`  | `/auth/me`              | Implemented: retrieve the authenticated user's information      |
 | `POST` | `/auth/verify-email`    | Planned: verify an email address                                |
 | `POST` | `/auth/forgot-password` | Planned: request a password reset                               |
 | `POST` | `/auth/reset-password`  | Planned: reset a password                                       |
@@ -195,6 +195,10 @@ Send a credentialed `POST` request to `/auth/refresh` with the public `X-Client-
 ### Logout
 
 Send a credentialed request to `POST /auth/logout` with the public `X-Client-Id` header and an allowed origin. The browser sends its HttpOnly cookies automatically. The service revokes the matching refresh session, if present and valid for that client, and clears both authentication cookies. Logout is idempotent when the refresh cookie is missing, invalid, or already revoked. An issued access token remains valid until it expires.
+
+### Current User
+
+Send a credentialed request to `GET /auth/me` with the public `X-Client-Id` header and an allowed origin. The browser sends the access-token HttpOnly cookie automatically after login; API clients may instead send an Authorization header. Swagger UI is configured to include browser cookies, so use its login operation first rather than entering a token in an authorization field. The token and client must match an active account; the response contains only the user's ID and email.
 
 ### Security Requirements
 

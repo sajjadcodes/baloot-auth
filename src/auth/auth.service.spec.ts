@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { createHash } from 'node:crypto';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { PrismaService } from '../database/prisma.service.js';
 import { AccessTokenService } from './access-token.service.js';
@@ -260,6 +260,33 @@ describe('AuthService', () => {
     ).rejects.toThrow('Invalid email or password.');
     expect(createSession).not.toHaveBeenCalled();
     expect(issueAccessToken).not.toHaveBeenCalled();
+  });
+
+  describe('getCurrentUser', () => {
+    it('returns only public information for an active user in the client', async () => {
+      findRefreshUser.mockResolvedValue({
+        ...user,
+        status: 'ACTIVE',
+        clientId,
+        passwordHash: 'must-not-be-returned',
+      });
+
+      await expect(service.getCurrentUser(user.id, clientId)).resolves.toEqual(
+        user,
+      );
+      expect(whereUser).toHaveBeenCalledWith({ id: user.id, clientId });
+    });
+
+    it.each([
+      ['a missing user', null],
+      ['a disabled user', { ...user, status: 'DISABLED', clientId }],
+    ])('rejects %s', async (_case, foundUser) => {
+      findRefreshUser.mockResolvedValue(foundUser);
+
+      await expect(service.getCurrentUser(user.id, clientId)).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
   });
 
   describe('logout', () => {

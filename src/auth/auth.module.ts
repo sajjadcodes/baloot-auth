@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller.js';
 import { AuthCookiesService } from './auth-cookies.service.js';
 import { AccessTokenService } from './access-token.service.js';
 import { AuthService } from './auth.service.js';
+import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { TrustedOriginGuard } from './guards/trusted-origin.guard.js';
 import { PasswordService } from './password.service.js';
 import { JwtStrategy } from './strategies/jwt.strategy.js';
@@ -38,6 +39,7 @@ import {
     AccessTokenService,
     AuthCookiesService,
     AuthService,
+    JwtAuthGuard,
     JwtStrategy,
     PasswordService,
     TrustedOriginGuard,
@@ -46,6 +48,7 @@ import {
     AccessTokenService,
     AuthCookiesService,
     AuthService,
+    JwtAuthGuard,
     JwtModule,
     PassportModule,
     PasswordService,

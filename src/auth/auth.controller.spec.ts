@@ -41,6 +41,43 @@ describe('AuthController', () => {
     );
   });
 
+  it('returns the authenticated user for the matching client', async () => {
+    const currentUser = { id: 'user-1', email: 'person@example.com' };
+    const getCurrentUser = jest.fn().mockResolvedValue(currentUser);
+    const auth = { getCurrentUser } as unknown as AuthService;
+    const controller = new AuthController(auth, {} as AuthCookiesService);
+    const clientId = '00000000-0000-4000-8000-000000000001';
+
+    await expect(
+      controller.getCurrentUser(
+        { user: { userId: currentUser.id, clientId } } as Request & {
+          user: { userId: string; clientId: string };
+        },
+        clientId,
+      ),
+    ).resolves.toEqual(currentUser);
+    expect(getCurrentUser).toHaveBeenCalledWith(currentUser.id, clientId);
+  });
+
+  it('rejects a current-user request when the client differs from the token', async () => {
+    const getCurrentUser = jest.fn();
+    const auth = { getCurrentUser } as unknown as AuthService;
+    const controller = new AuthController(auth, {} as AuthCookiesService);
+
+    await expect(
+      controller.getCurrentUser(
+        {
+          user: {
+            userId: 'user-1',
+            clientId: '00000000-0000-4000-8000-000000000001',
+          },
+        } as Request & { user: { userId: string; clientId: string } },
+        '00000000-0000-4000-8000-000000000002',
+      ),
+    ).rejects.toThrow('Invalid or expired access token.');
+    expect(getCurrentUser).not.toHaveBeenCalled();
+  });
+
   it('does not set cookies when registration fails', async () => {
     const register = jest
       .fn()
@@ -177,7 +214,7 @@ describe('AuthController', () => {
       controller.refresh(
         {
           cookies: { [REFRESH_TOKEN_COOKIE]: 'old-refresh-secret' },
-        } as Request,
+        } as unknown as Request,
         'client-id',
         {} as Response,
       ),

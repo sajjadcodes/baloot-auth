@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   Headers,
   Post,
   Req,
@@ -15,7 +16,9 @@ import { AuthCookiesService } from './auth-cookies.service.js';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
+import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { TrustedOriginGuard } from './guards/trusted-origin.guard.js';
+import type { AuthenticatedUser } from './strategies/jwt.strategy.js';
 import {
   AUTH_THROTTLE_WINDOW_MS,
   CLIENT_ID_HEADER,
@@ -33,6 +36,29 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly cookies: AuthCookiesService,
   ) {}
+
+  @Get('me')
+  @UseGuards(ThrottlerGuard, TrustedOriginGuard, JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Get the current user',
+    description:
+      'Returns the authenticated user’s public information. The browser sends the access-token HttpOnly cookie automatically after login. API clients may also use an Authorization header.',
+  })
+  @ApiHeader({
+    name: CLIENT_ID_HEADER,
+    description: 'Public ID of the registered application client.',
+    required: true,
+  })
+  async getCurrentUser(
+    @Req() request: Request & { user: AuthenticatedUser },
+    @Headers(CLIENT_ID_HEADER) clientId: string,
+  ): Promise<{ id: string; email: string }> {
+    if (request.user.clientId !== clientId) {
+      throw new UnauthorizedException('Invalid or expired access token.');
+    }
+
+    return this.auth.getCurrentUser(request.user.userId, clientId);
+  }
 
   @Post('register')
   @UseGuards(ThrottlerGuard, TrustedOriginGuard)

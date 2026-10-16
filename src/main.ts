@@ -32,7 +32,9 @@ async function bootstrap() {
     .setDescription('Reusable authentication and authorization service API')
     .build();
   const openApiDocument = SwaggerModule.createDocument(app, openApiConfig);
-  SwaggerModule.setup('api/docs', app, openApiDocument);
+  SwaggerModule.setup('api/docs', app, openApiDocument, {
+    swaggerOptions: { withCredentials: true },
+  });
 
   await app.listen(config.getOrThrow<number>('PORT'));
 }
