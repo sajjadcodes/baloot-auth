@@ -52,7 +52,9 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('Insufficient role.');
     }
 
+    // Accept the request when the user holds any one of the declared roles.
     for (const roleName of requiredRoles) {
+      // Join the assignment to the role so the check uses the current database state.
       const assignment = await this.prisma.public.UserRole.include(
         'role',
         (role) => role.where({ name: toVarchar(roleName, 64) }),
@@ -61,6 +63,7 @@ export class RolesGuard implements CanActivate {
         .first();
 
       if (assignment) {
+        // A single matching assignment is sufficient; remaining roles need no query.
         return true;
       }
     }
