@@ -7,6 +7,7 @@ import {
   EMAIL_VERIFICATION_ISSUER,
   EMAIL_VERIFICATION_PURPOSE,
 } from './auth.constants.js';
+import { EmailDeliveryService } from './email-delivery.service.js';
 import { EmailVerificationService } from './email-verification.service.js';
 
 describe('EmailVerificationService', () => {
@@ -20,6 +21,7 @@ describe('EmailVerificationService', () => {
   const service = new EmailVerificationService(
     new ConfigService({ EMAIL_VERIFICATION_SECRET: secret }),
     jwt,
+    { send: jest.fn() } as unknown as EmailDeliveryService,
   );
 
   async function createToken(

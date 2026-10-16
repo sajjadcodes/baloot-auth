@@ -11,6 +11,8 @@ describe('validateEnvironment', () => {
     RESEND_API_KEY: 're_test_api_key',
     AUTH_EMAIL_FROM: 'Baloot Auth <auth@example.com>',
     EMAIL_VERIFICATION_URL: 'http://localhost:5173/verify-email',
+    PASSWORD_RESET_SECRET: 'test-only-password-reset-secret-32-characters',
+    PASSWORD_RESET_URL: 'http://localhost:5173/reset-password',
   };
 
   function validateWithEmailConfig(config: Record<string, unknown>) {
@@ -30,6 +32,7 @@ describe('validateEnvironment', () => {
     expect(environment.AUTH_COOKIE_SAME_SITE).toBe('lax');
     expect(environment.CORS_ORIGINS).toEqual([]);
     expect(environment.EMAIL_VERIFICATION_TTL_SECONDS).toBe(86400);
+    expect(environment.PASSWORD_RESET_TTL_SECONDS).toBe(900);
   });
 
   it('parses and validates explicit values', () => {
@@ -127,5 +130,45 @@ describe('validateEnvironment', () => {
         JWT_ACCESS_SECRET: emailConfig.EMAIL_VERIFICATION_SECRET,
       }),
     ).toThrow('email verification and access-token secrets must differ');
+  });
+
+  it('requires a separate password-reset signing secret', () => {
+    expect(() =>
+      validateWithEmailConfig({
+        DATABASE_URL: databaseUrl,
+        JWT_ACCESS_SECRET: accessSecret,
+        PASSWORD_RESET_SECRET: accessSecret,
+      }),
+    ).toThrow('password-reset secret must differ');
+
+    expect(() =>
+      validateWithEmailConfig({
+        DATABASE_URL: databaseUrl,
+        JWT_ACCESS_SECRET: accessSecret,
+        PASSWORD_RESET_SECRET: emailConfig.EMAIL_VERIFICATION_SECRET,
+      }),
+    ).toThrow('password-reset secret must differ');
+  });
+
+  it('requires HTTPS password reset URLs in production', () => {
+    expect(() =>
+      validateWithEmailConfig({
+        NODE_ENV: 'production',
+        DATABASE_URL: databaseUrl,
+        JWT_ACCESS_SECRET: accessSecret,
+        EMAIL_VERIFICATION_URL: 'https://app.example.com/verify-email',
+        PASSWORD_RESET_URL: 'http://app.example.com/reset-password',
+      }),
+    ).toThrow('PASSWORD_RESET_URL must use HTTPS in production');
+  });
+
+  it('rejects password reset token lifetimes outside the allowed range', () => {
+    expect(() =>
+      validateWithEmailConfig({
+        DATABASE_URL: databaseUrl,
+        JWT_ACCESS_SECRET: accessSecret,
+        PASSWORD_RESET_TTL_SECONDS: '120',
+      }),
+    ).toThrow('Invalid environment configuration');
   });
 });

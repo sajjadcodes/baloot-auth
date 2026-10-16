@@ -14,8 +14,10 @@ import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { AuthCookiesService } from './auth-cookies.service.js';
 import { AuthService } from './auth.service.js';
+import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { ResendVerificationDto } from './dto/resend-verification.dto.js';
 import { VerifyEmailDto } from './dto/verify-email.dto.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
@@ -25,6 +27,8 @@ import {
   AUTH_THROTTLE_WINDOW_MS,
   CLIENT_ID_HEADER,
   EMAIL_VERIFICATION_RATE_LIMIT,
+  PASSWORD_RESET_RATE_LIMIT,
+  PASSWORD_RESET_REQUEST_RATE_LIMIT,
   LOGIN_RATE_LIMIT,
   LOGOUT_RATE_LIMIT,
   REFRESH_RATE_LIMIT,
@@ -141,6 +145,60 @@ export class AuthController {
     return {
       message: 'If the account is eligible, a verification email was sent.',
     };
+  }
+
+  @Post('forgot-password')
+  @UseGuards(ThrottlerGuard, TrustedOriginGuard)
+  @Throttle({
+    default: {
+      limit: PASSWORD_RESET_REQUEST_RATE_LIMIT,
+      ttl: AUTH_THROTTLE_WINDOW_MS,
+    },
+  })
+  @ApiOperation({
+    summary: 'Request a password reset',
+    description:
+      'Sends a short-lived password-reset link when the account exists and is eligible. The response does not reveal account existence.',
+  })
+  @ApiHeader({
+    name: CLIENT_ID_HEADER,
+    description: 'Public ID of the registered application client.',
+    required: true,
+  })
+  async forgotPassword(
+    @Body() dto: ForgotPasswordDto,
+    @Headers(CLIENT_ID_HEADER) clientId: string,
+  ): Promise<{ message: string }> {
+    await this.auth.requestPasswordReset(dto.email, clientId);
+    return {
+      message: 'If the account is eligible, a password reset email was sent.',
+    };
+  }
+
+  @Post('reset-password')
+  @UseGuards(ThrottlerGuard, TrustedOriginGuard)
+  @Throttle({
+    default: {
+      limit: PASSWORD_RESET_RATE_LIMIT,
+      ttl: AUTH_THROTTLE_WINDOW_MS,
+    },
+  })
+  @ApiOperation({
+    summary: 'Reset a password',
+    description:
+      'Uses a short-lived, single-use email token to set a new password and revoke all active refresh sessions.',
+  })
+  @ApiHeader({
+    name: CLIENT_ID_HEADER,
+    description: 'Public ID of the registered application client.',
+    required: true,
+  })
+  async resetPassword(
+    @Body() dto: ResetPasswordDto,
+    @Headers(CLIENT_ID_HEADER) clientId: string,
+  ): Promise<{ message: string }> {
+    await this.auth.resetPassword(dto.token, dto.password, clientId);
+    return { message: 'Password reset successfully.' };
   }
 
   @Post('login')

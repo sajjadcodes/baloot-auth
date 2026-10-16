@@ -8,7 +8,7 @@ It is designed to remain independent of any specific product, company, or busine
 
 ## Implementation Status
 
-The current foundation includes validated startup configuration, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, a Prisma ORM 8 PostgreSQL contract and runtime, Argon2id password hashing, short-lived JWT access-token issuance with a Passport JWT strategy, and a globally applied success-response interceptor and exception filter. Application clients have registered origins; users, email uniqueness, authentication requests, and access tokens are scoped to one client. The root health response and `POST /auth/register`, `/auth/verify-email`, `/auth/resend-verification`, `/auth/login`, `/auth/refresh`, `/auth/logout`, and `GET /auth/me` are implemented. Email verification is required before login; password reset and authorization endpoints remain planned.
+The current foundation includes validated startup configuration, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, a Prisma ORM 8 PostgreSQL contract and runtime, Argon2id password hashing, short-lived JWT access-token issuance with a Passport JWT strategy, and a globally applied success-response interceptor and exception filter. Application clients have registered origins; users, email uniqueness, authentication requests, and access tokens are scoped to one client. The root health response and authentication routes for registration, email verification, login, refresh, logout, current-user lookup, and password reset are implemented. Email verification is required before login; role-based authorization remains planned.
 
 HTTP responses use a globally applied envelope: successful responses contain `success`, the HTTP `code`, a `message`, and endpoint `data`; errors contain `success: false`, the HTTP `code`, and a safe `message`. Unexpected server errors are logged server-side without stack traces or exception messages and returned to clients as a generic internal-server-error message.
 
@@ -173,8 +173,8 @@ The authentication endpoint status is:
 | `POST` | `/auth/refresh`             | Implemented: rotate tokens and set authentication cookies       |
 | `POST` | `/auth/logout`              | Implemented: revoke the refresh session and clear cookies       |
 | `GET`  | `/auth/me`                  | Implemented: retrieve the authenticated user's information      |
-| `POST` | `/auth/forgot-password`     | Planned: request a password reset                               |
-| `POST` | `/auth/reset-password`      | Planned: reset a password                                       |
+| `POST` | `/auth/forgot-password`     | Implemented: request a password reset                           |
+| `POST` | `/auth/reset-password`      | Implemented: reset a password                                   |
 
 Refer to Swagger for the exact request formats, response contracts, validation requirements, and error codes.
 
@@ -191,6 +191,14 @@ Send credentials to `POST /auth/login`. After successful authentication, the ser
 ### Email Verification
 
 Registration sends a short-lived verification link through Resend. Configure `RESEND_API_KEY`, `AUTH_EMAIL_FROM` (a sender verified with Resend), `EMAIL_VERIFICATION_SECRET` (a private random secret of at least 32 characters), `EMAIL_VERIFICATION_TTL_SECONDS`, and `EMAIL_VERIFICATION_URL` (the frontend page that handles verification). In production, the verification URL must use HTTPS. The frontend reads the token from the URL fragment and sends it in the body of a credentialed `POST /auth/verify-email` request with `X-Client-Id`, then removes the token from the URL. If the email does not arrive, call `POST /auth/resend-verification`; its response does not disclose whether the account exists.
+
+### Password Reset
+
+Configure `PASSWORD_RESET_SECRET` as a private random secret of at least 32 characters, distinct from both `JWT_ACCESS_SECRET` and `EMAIL_VERIFICATION_SECRET`. `PASSWORD_RESET_TTL_SECONDS` defaults to 900 and accepts values from 300 to 86400. `PASSWORD_RESET_URL` must point to the frontend reset page and use HTTPS in production. Password reset uses the existing Resend sender settings.
+
+Call `POST /auth/forgot-password` with `email` and `X-Client-Id`. It returns the same message whether or not an active, verified account exists and is rate-limited. If eligible, the user receives a short-lived reset link. The frontend reads the token from the URL fragment, removes it from the address bar, and sends the token plus the new 12–128 character password in a credentialed `POST /auth/reset-password` request with the same client ID.
+
+The signed reset token is bound to the current password hash using a keyed fingerprint, so it becomes invalid after a successful password change without storing a reset token or adding a database table. The password update and revocation of all active refresh sessions occur in one transaction; a conditional update makes a token single-use even if concurrent reset requests race. Existing access tokens remain valid until their short expiry, after which the user must log in again because refresh sessions have been revoked.
 
 ### Planned Authenticated Requests
 
@@ -212,7 +220,7 @@ Send a credentialed request to `GET /auth/me` with the public `X-Client-Id` head
 
 ### CSRF Protection and Security Requirements
 
-All state-changing authentication routes (`POST /auth/register`, `/auth/verify-email`, `/auth/resend-verification`, `/auth/login`, `/auth/refresh`, and `/auth/logout`) use `TrustedOriginGuard`. It requires an `Origin` header, checks for an exact match in `CORS_ORIGINS`, then verifies that the origin is assigned to the active client identified by `X-Client-Id`. Requests with missing, unlisted, or client-mismatched origins are rejected. Keep this guard on any future state-changing endpoint that authenticates with cookies.
+All state-changing authentication routes (`POST /auth/register`, `/auth/verify-email`, `/auth/resend-verification`, `/auth/forgot-password`, `/auth/reset-password`, `/auth/login`, `/auth/refresh`, and `/auth/logout`) use `TrustedOriginGuard`. It requires an `Origin` header, checks for an exact match in `CORS_ORIGINS`, then verifies that the origin is assigned to the active client identified by `X-Client-Id`. Requests with missing, unlisted, or client-mismatched origins are rejected. Keep this guard on any future state-changing endpoint that authenticates with cookies.
 
 This is strict origin-based CSRF protection for browser requests, independent of the browser's CORS enforcement; CORS alone is not the security check. Browser JavaScript cannot set the `Origin` header arbitrarily, while non-browser callers can, so the origin and client ID are not authentication credentials. Continue to require passwords or signed tokens as appropriate. This defense does not protect against script execution on a trusted origin (XSS); `SameSite` cookies and HTTPS are complementary protections.
 

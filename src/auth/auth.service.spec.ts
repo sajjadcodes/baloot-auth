@@ -6,6 +6,7 @@ import type { PrismaService } from '../database/prisma.service.js';
 import { AccessTokenService } from './access-token.service.js';
 import { AuthService } from './auth.service.js';
 import { EmailVerificationService } from './email-verification.service.js';
+import { PasswordResetService } from './password-reset.service.js';
 
 describe('AuthService', () => {
   const user = { id: 'user-1', email: 'person@example.com' };
@@ -131,6 +132,10 @@ describe('AuthService', () => {
         sendVerificationEmail,
         verifyToken: verifyEmailToken,
       } as unknown as EmailVerificationService,
+      {
+        request: jest.fn(),
+        reset: jest.fn(),
+      } as unknown as PasswordResetService,
       new ConfigService({ REFRESH_SESSION_TTL_SECONDS: 2592000 }),
     );
   });

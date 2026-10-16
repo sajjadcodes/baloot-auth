@@ -94,6 +94,24 @@ export class EnvironmentVariables {
     require_tld: false,
   })
   EMAIL_VERIFICATION_URL!: string;
+
+  @IsString()
+  @MinLength(32)
+  PASSWORD_RESET_SECRET!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(300)
+  @Max(86400)
+  PASSWORD_RESET_TTL_SECONDS = 900;
+
+  @IsString()
+  @IsUrl({
+    protocols: ['http', 'https'],
+    require_protocol: true,
+    require_tld: false,
+  })
+  PASSWORD_RESET_URL!: string;
 }
 
 export function validateEnvironment(
@@ -141,9 +159,27 @@ export function validateEnvironment(
     );
   }
 
+  if (
+    environment.NODE_ENV === 'production' &&
+    new URL(environment.PASSWORD_RESET_URL).protocol !== 'https:'
+  ) {
+    throw new Error(
+      'Invalid environment configuration: PASSWORD_RESET_URL must use HTTPS in production.',
+    );
+  }
+
   if (environment.EMAIL_VERIFICATION_SECRET === environment.JWT_ACCESS_SECRET) {
     throw new Error(
       'Invalid environment configuration: email verification and access-token secrets must differ.',
+    );
+  }
+
+  if (
+    environment.PASSWORD_RESET_SECRET === environment.JWT_ACCESS_SECRET ||
+    environment.PASSWORD_RESET_SECRET === environment.EMAIL_VERIFICATION_SECRET
+  ) {
+    throw new Error(
+      'Invalid environment configuration: password-reset secret must differ from access-token and email-verification secrets.',
     );
   }
 

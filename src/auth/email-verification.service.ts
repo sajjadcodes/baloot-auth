@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { Resend } from 'resend';
+import { EmailDeliveryService } from './email-delivery.service.js';
 import {
   ACCESS_TOKEN_ALGORITHM,
   EMAIL_VERIFICATION_AUDIENCE,
@@ -20,6 +20,7 @@ export class EmailVerificationService {
   constructor(
     private readonly config: ConfigService,
     private readonly jwt: JwtService,
+    private readonly emailDelivery: EmailDeliveryService,
   ) {}
 
   async sendVerificationEmail(user: EmailVerificationClaims): Promise<void> {
@@ -45,18 +46,12 @@ export class EmailVerificationService {
     );
     verificationUrl.hash = new URLSearchParams({ token }).toString();
 
-    const resend = new Resend(this.config.getOrThrow<string>('RESEND_API_KEY'));
-    const { error } = await resend.emails.send({
-      from: this.config.getOrThrow<string>('AUTH_EMAIL_FROM'),
+    await this.emailDelivery.send({
       to: user.email,
       subject: 'Verify your email address',
       text: `Verify your email address by opening this link: ${verificationUrl.toString()}`,
       html: `<p>Verify your email address to finish creating your account.</p><p><a href="${escapeHtml(verificationUrl.toString())}">Verify email</a></p><p>This link expires in ${Math.ceil(this.config.getOrThrow<number>('EMAIL_VERIFICATION_TTL_SECONDS') / 3600)} hour(s).</p>`,
     });
-
-    if (error) {
-      throw new Error(`Resend email delivery failed: ${error.message}`);
-    }
   }
 
   async verifyToken(token: string): Promise<EmailVerificationClaims> {

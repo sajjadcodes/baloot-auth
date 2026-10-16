@@ -13,6 +13,8 @@ describe('AuthController', () => {
       'register',
       'verifyEmail',
       'resendVerification',
+      'forgotPassword',
+      'resetPassword',
       'login',
       'refresh',
       'logout',
@@ -24,6 +26,42 @@ describe('AuthController', () => {
 
       expect(guards).toContain(TrustedOriginGuard);
     }
+  });
+
+  it('requests password reset without revealing account eligibility', async () => {
+    const requestPasswordReset = jest.fn().mockResolvedValue(undefined);
+    const auth = { requestPasswordReset } as unknown as AuthService;
+    const controller = new AuthController(auth, {} as AuthCookiesService);
+    const clientId = '00000000-0000-4000-8000-000000000001';
+
+    await expect(
+      controller.forgotPassword({ email: 'person@example.com' }, clientId),
+    ).resolves.toEqual({
+      message: 'If the account is eligible, a password reset email was sent.',
+    });
+    expect(requestPasswordReset).toHaveBeenCalledWith(
+      'person@example.com',
+      clientId,
+    );
+  });
+
+  it('resets the password using the submitted token and client', async () => {
+    const resetPassword = jest.fn().mockResolvedValue(undefined);
+    const auth = { resetPassword } as unknown as AuthService;
+    const controller = new AuthController(auth, {} as AuthCookiesService);
+    const clientId = '00000000-0000-4000-8000-000000000001';
+
+    await expect(
+      controller.resetPassword(
+        { token: 'reset-token', password: 'new secure password' },
+        clientId,
+      ),
+    ).resolves.toEqual({ message: 'Password reset successfully.' });
+    expect(resetPassword).toHaveBeenCalledWith(
+      'reset-token',
+      'new secure password',
+      clientId,
+    );
   });
 
   it('sends verification after registration without setting authentication cookies', async () => {

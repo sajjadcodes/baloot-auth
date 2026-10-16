@@ -16,6 +16,7 @@ import {
 } from './auth.constants.js';
 import { AccessTokenService } from './access-token.service.js';
 import { EmailVerificationService } from './email-verification.service.js';
+import { PasswordResetService } from './password-reset.service.js';
 import { PasswordService } from './password.service.js';
 
 export interface AuthenticatedUserInfo {
@@ -38,6 +39,7 @@ export class AuthService {
     private readonly passwords: PasswordService,
     private readonly accessTokens: AccessTokenService,
     private readonly emailVerification: EmailVerificationService,
+    private readonly passwordReset: PasswordResetService,
     private readonly config: ConfigService,
   ) {}
 
@@ -207,6 +209,18 @@ export class AuthService {
       clientId: user.clientId,
       email: user.email,
     });
+  }
+
+  async requestPasswordReset(email: string, clientId: string): Promise<void> {
+    await this.passwordReset.request(email, clientId);
+  }
+
+  async resetPassword(
+    token: string,
+    password: string,
+    clientId: string,
+  ): Promise<void> {
+    await this.passwordReset.reset(token, password, clientId);
   }
 
   async verifyEmail(token: string, clientId: string): Promise<void> {
