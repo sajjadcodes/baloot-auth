@@ -1,0 +1,862 @@
+[
+  {
+    "id": "schema.public",
+    "label": "Create schema \"public\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres"
+    },
+    "precheck": [],
+    "execute": [
+      {
+        "description": "Create schema \"public\"",
+        "sql": "CREATE SCHEMA IF NOT EXISTS \"public\"",
+        "params": []
+      }
+    ],
+    "postcheck": []
+  },
+  {
+    "id": "table.client_allowed_origins",
+    "label": "Create table \"client_allowed_origins\"",
+    "summary": "Creates table \"client_allowed_origins\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "client_allowed_origins"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"client_allowed_origins\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"client_allowed_origins\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"client_allowed_origins\"",
+        "sql": "CREATE TABLE \"public\".\"client_allowed_origins\" (\n  \"client_id\" uuid NOT NULL,\n  \"created_at\" timestamptz DEFAULT (now()) NOT NULL,\n  \"origin\" character varying(512) NOT NULL,\n  PRIMARY KEY (\"client_id\", \"origin\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"client_allowed_origins\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"client_allowed_origins\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.clients",
+    "label": "Create table \"clients\"",
+    "summary": "Creates table \"clients\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "clients"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"clients\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"clients\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"clients\"",
+        "sql": "CREATE TABLE \"public\".\"clients\" (\n  \"created_at\" timestamptz DEFAULT (now()) NOT NULL,\n  \"id\" uuid NOT NULL,\n  \"name\" character varying(128) NOT NULL,\n  \"status\" text DEFAULT 'ACTIVE' NOT NULL,\n  \"updated_at\" timestamptz NOT NULL,\n  PRIMARY KEY (\"id\"),\n  CONSTRAINT \"clients_status_check_56c81764\" CHECK (\"status\" IN ('ACTIVE', 'DISABLED'))\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"clients\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"clients\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.refresh_sessions",
+    "label": "Create table \"refresh_sessions\"",
+    "summary": "Creates table \"refresh_sessions\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "refresh_sessions"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"refresh_sessions\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"refresh_sessions\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"refresh_sessions\"",
+        "sql": "CREATE TABLE \"public\".\"refresh_sessions\" (\n  \"created_at\" timestamptz DEFAULT (now()) NOT NULL,\n  \"expires_at\" timestamptz NOT NULL,\n  \"id\" uuid NOT NULL,\n  \"revoked_at\" timestamptz,\n  \"token_hash\" character varying(128) NOT NULL,\n  \"updated_at\" timestamptz NOT NULL,\n  \"user_agent\" character varying(512),\n  \"user_id\" uuid NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"refresh_sessions\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"refresh_sessions\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.roles",
+    "label": "Create table \"roles\"",
+    "summary": "Creates table \"roles\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "roles"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"roles\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"roles\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"roles\"",
+        "sql": "CREATE TABLE \"public\".\"roles\" (\n  \"created_at\" timestamptz DEFAULT (now()) NOT NULL,\n  \"description\" character varying(255),\n  \"id\" uuid NOT NULL,\n  \"name\" character varying(64) NOT NULL,\n  \"updated_at\" timestamptz NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"roles\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"roles\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.user_roles",
+    "label": "Create table \"user_roles\"",
+    "summary": "Creates table \"user_roles\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "user_roles"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"user_roles\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"user_roles\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"user_roles\"",
+        "sql": "CREATE TABLE \"public\".\"user_roles\" (\n  \"assigned_at\" timestamptz DEFAULT (now()) NOT NULL,\n  \"role_id\" uuid NOT NULL,\n  \"user_id\" uuid NOT NULL,\n  PRIMARY KEY (\"user_id\", \"role_id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"user_roles\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"user_roles\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "table.users",
+    "label": "Create table \"users\"",
+    "summary": "Creates table \"users\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "users"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"users\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"users\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"users\"",
+        "sql": "CREATE TABLE \"public\".\"users\" (\n  \"client_id\" uuid NOT NULL,\n  \"created_at\" timestamptz DEFAULT (now()) NOT NULL,\n  \"email\" character varying(320) NOT NULL,\n  \"email_verified_at\" timestamptz,\n  \"id\" uuid NOT NULL,\n  \"password_hash\" character varying(255) NOT NULL,\n  \"status\" text DEFAULT 'ACTIVE' NOT NULL,\n  \"updated_at\" timestamptz NOT NULL,\n  PRIMARY KEY (\"id\"),\n  CONSTRAINT \"users_status_check_56c81764\" CHECK (\"status\" IN ('ACTIVE', 'DISABLED'))\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"users\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"users\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.refresh_sessions.refresh_sessions_token_hash_key",
+    "label": "Add unique constraint on \"refresh_sessions\" (token_hash)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "refresh_sessions_token_hash_key",
+        "table": "refresh_sessions"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"refresh_sessions_token_hash_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "refresh_sessions_token_hash_key",
+          "public",
+          "\"public\".\"refresh_sessions\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"refresh_sessions_token_hash_key\"",
+        "sql": "ALTER TABLE \"public\".\"refresh_sessions\" ADD CONSTRAINT \"refresh_sessions_token_hash_key\" UNIQUE (\"token_hash\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"refresh_sessions_token_hash_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "refresh_sessions_token_hash_key",
+          "public",
+          "\"public\".\"refresh_sessions\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.roles.roles_name_key",
+    "label": "Add unique constraint on \"roles\" (name)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "roles_name_key",
+        "table": "roles"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"roles_name_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "roles_name_key",
+          "public",
+          "\"public\".\"roles\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"roles_name_key\"",
+        "sql": "ALTER TABLE \"public\".\"roles\" ADD CONSTRAINT \"roles_name_key\" UNIQUE (\"name\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"roles_name_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "roles_name_key",
+          "public",
+          "\"public\".\"roles\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.users.users_client_id_email_key",
+    "label": "Add unique constraint on \"users\" (client_id, email)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "users_client_id_email_key",
+        "table": "users"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"users_client_id_email_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "users_client_id_email_key",
+          "public",
+          "\"public\".\"users\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"users_client_id_email_key\"",
+        "sql": "ALTER TABLE \"public\".\"users\" ADD CONSTRAINT \"users_client_id_email_key\" UNIQUE (\"client_id\", \"email\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"users_client_id_email_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "users_client_id_email_key",
+          "public",
+          "\"public\".\"users\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.client_allowed_origins.client_allowed_origins_client_id_idx_1bb5a570",
+    "label": "Create index \"client_allowed_origins_client_id_idx_1bb5a570\" on \"client_allowed_origins\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "client_allowed_origins_client_id_idx_1bb5a570",
+        "table": "client_allowed_origins"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"client_allowed_origins_client_id_idx_1bb5a570\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"client_allowed_origins_client_id_idx_1bb5a570\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"client_allowed_origins_client_id_idx_1bb5a570\"",
+        "sql": "CREATE INDEX \"client_allowed_origins_client_id_idx_1bb5a570\" ON \"public\".\"client_allowed_origins\" (\"client_id\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"client_allowed_origins_client_id_idx_1bb5a570\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"client_allowed_origins_client_id_idx_1bb5a570\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.refresh_sessions.refresh_sessions_expires_at_idx_35365ada",
+    "label": "Create index \"refresh_sessions_expires_at_idx_35365ada\" on \"refresh_sessions\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "refresh_sessions_expires_at_idx_35365ada",
+        "table": "refresh_sessions"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"refresh_sessions_expires_at_idx_35365ada\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"refresh_sessions_expires_at_idx_35365ada\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"refresh_sessions_expires_at_idx_35365ada\"",
+        "sql": "CREATE INDEX \"refresh_sessions_expires_at_idx_35365ada\" ON \"public\".\"refresh_sessions\" (\"expires_at\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"refresh_sessions_expires_at_idx_35365ada\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"refresh_sessions_expires_at_idx_35365ada\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.refresh_sessions.refresh_sessions_user_id_idx_6c952402",
+    "label": "Create index \"refresh_sessions_user_id_idx_6c952402\" on \"refresh_sessions\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "refresh_sessions_user_id_idx_6c952402",
+        "table": "refresh_sessions"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"refresh_sessions_user_id_idx_6c952402\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"refresh_sessions_user_id_idx_6c952402\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"refresh_sessions_user_id_idx_6c952402\"",
+        "sql": "CREATE INDEX \"refresh_sessions_user_id_idx_6c952402\" ON \"public\".\"refresh_sessions\" (\"user_id\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"refresh_sessions_user_id_idx_6c952402\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"refresh_sessions_user_id_idx_6c952402\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.refresh_sessions.refresh_sessions_user_id_revoked_at_idx_4c62e965",
+    "label": "Create index \"refresh_sessions_user_id_revoked_at_idx_4c62e965\" on \"refresh_sessions\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "refresh_sessions_user_id_revoked_at_idx_4c62e965",
+        "table": "refresh_sessions"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"refresh_sessions_user_id_revoked_at_idx_4c62e965\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"refresh_sessions_user_id_revoked_at_idx_4c62e965\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"refresh_sessions_user_id_revoked_at_idx_4c62e965\"",
+        "sql": "CREATE INDEX \"refresh_sessions_user_id_revoked_at_idx_4c62e965\" ON \"public\".\"refresh_sessions\" (\"user_id\", \"revoked_at\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"refresh_sessions_user_id_revoked_at_idx_4c62e965\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"refresh_sessions_user_id_revoked_at_idx_4c62e965\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.user_roles.user_roles_role_id_idx_d9467c50",
+    "label": "Create index \"user_roles_role_id_idx_d9467c50\" on \"user_roles\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "user_roles_role_id_idx_d9467c50",
+        "table": "user_roles"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"user_roles_role_id_idx_d9467c50\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"user_roles_role_id_idx_d9467c50\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"user_roles_role_id_idx_d9467c50\"",
+        "sql": "CREATE INDEX \"user_roles_role_id_idx_d9467c50\" ON \"public\".\"user_roles\" (\"role_id\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"user_roles_role_id_idx_d9467c50\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"user_roles_role_id_idx_d9467c50\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.user_roles.user_roles_user_id_idx_6c952402",
+    "label": "Create index \"user_roles_user_id_idx_6c952402\" on \"user_roles\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "user_roles_user_id_idx_6c952402",
+        "table": "user_roles"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"user_roles_user_id_idx_6c952402\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"user_roles_user_id_idx_6c952402\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"user_roles_user_id_idx_6c952402\"",
+        "sql": "CREATE INDEX \"user_roles_user_id_idx_6c952402\" ON \"public\".\"user_roles\" (\"user_id\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"user_roles_user_id_idx_6c952402\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"user_roles_user_id_idx_6c952402\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.users.users_client_id_idx_1bb5a570",
+    "label": "Create index \"users_client_id_idx_1bb5a570\" on \"users\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "users_client_id_idx_1bb5a570",
+        "table": "users"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"users_client_id_idx_1bb5a570\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"users_client_id_idx_1bb5a570\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"users_client_id_idx_1bb5a570\"",
+        "sql": "CREATE INDEX \"users_client_id_idx_1bb5a570\" ON \"public\".\"users\" (\"client_id\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"users_client_id_idx_1bb5a570\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"users_client_id_idx_1bb5a570\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.client_allowed_origins.client_allowed_origins_client_id_fkey",
+    "label": "Add foreign key \"client_allowed_origins_client_id_fkey\" on \"client_allowed_origins\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "client_allowed_origins_client_id_fkey",
+        "table": "client_allowed_origins"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"client_allowed_origins_client_id_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "client_allowed_origins_client_id_fkey",
+          "public",
+          "\"public\".\"client_allowed_origins\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"client_allowed_origins_client_id_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"client_allowed_origins\"\nADD CONSTRAINT \"client_allowed_origins_client_id_fkey\"\nFOREIGN KEY (\"client_id\")\nREFERENCES \"public\".\"clients\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"client_allowed_origins_client_id_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "client_allowed_origins_client_id_fkey",
+          "public",
+          "\"public\".\"client_allowed_origins\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.refresh_sessions.refresh_sessions_user_id_fkey",
+    "label": "Add foreign key \"refresh_sessions_user_id_fkey\" on \"refresh_sessions\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "refresh_sessions_user_id_fkey",
+        "table": "refresh_sessions"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"refresh_sessions_user_id_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "refresh_sessions_user_id_fkey",
+          "public",
+          "\"public\".\"refresh_sessions\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"refresh_sessions_user_id_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"refresh_sessions\"\nADD CONSTRAINT \"refresh_sessions_user_id_fkey\"\nFOREIGN KEY (\"user_id\")\nREFERENCES \"public\".\"users\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"refresh_sessions_user_id_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "refresh_sessions_user_id_fkey",
+          "public",
+          "\"public\".\"refresh_sessions\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.user_roles.user_roles_user_id_fkey",
+    "label": "Add foreign key \"user_roles_user_id_fkey\" on \"user_roles\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "user_roles_user_id_fkey",
+        "table": "user_roles"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"user_roles_user_id_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "user_roles_user_id_fkey",
+          "public",
+          "\"public\".\"user_roles\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"user_roles_user_id_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"user_roles\"\nADD CONSTRAINT \"user_roles_user_id_fkey\"\nFOREIGN KEY (\"user_id\")\nREFERENCES \"public\".\"users\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"user_roles_user_id_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "user_roles_user_id_fkey",
+          "public",
+          "\"public\".\"user_roles\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.user_roles.user_roles_role_id_fkey",
+    "label": "Add foreign key \"user_roles_role_id_fkey\" on \"user_roles\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "user_roles_role_id_fkey",
+        "table": "user_roles"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"user_roles_role_id_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "user_roles_role_id_fkey",
+          "public",
+          "\"public\".\"user_roles\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"user_roles_role_id_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"user_roles\"\nADD CONSTRAINT \"user_roles_role_id_fkey\"\nFOREIGN KEY (\"role_id\")\nREFERENCES \"public\".\"roles\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"user_roles_role_id_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "user_roles_role_id_fkey",
+          "public",
+          "\"public\".\"user_roles\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.users.users_client_id_fkey",
+    "label": "Add foreign key \"users_client_id_fkey\" on \"users\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "users_client_id_fkey",
+        "table": "users"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"users_client_id_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "users_client_id_fkey",
+          "public",
+          "\"public\".\"users\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"users_client_id_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"users\"\nADD CONSTRAINT \"users_client_id_fkey\"\nFOREIGN KEY (\"client_id\")\nREFERENCES \"public\".\"clients\" (\"id\")\nON DELETE RESTRICT"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"users_client_id_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "users_client_id_fkey",
+          "public",
+          "\"public\".\"users\""
+        ]
+      }
+    ]
+  }
+]
