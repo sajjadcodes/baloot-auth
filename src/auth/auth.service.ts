@@ -1,5 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { ConflictException, Inject, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { PrismaService } from '../database/prisma.service';
 import { AccessTokenService } from './access-token.service';
@@ -13,6 +18,8 @@ export interface RegistrationResult {
   accessToken: string;
   refreshToken: string;
 }
+
+export type LoginResult = RegistrationResult;
 
 @Injectable()
 export class AuthService {
@@ -79,6 +86,50 @@ export class AuthService {
 
     return {
       user,
+      accessToken,
+      refreshToken,
+    };
+  }
+
+  async login(email: string, password: string): Promise<LoginResult> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: {
+        id: true,
+        email: true,
+        passwordHash: true,
+        status: true,
+      },
+    });
+
+    if (
+      !user ||
+      !(await this.passwords.verify(password, user.passwordHash)) ||
+      user.status !== 'ACTIVE'
+    ) {
+      throw new UnauthorizedException('Invalid email or password.');
+    }
+
+    const refreshToken = randomBytes(32).toString('base64url');
+    const tokenHash = createHash('sha256').update(refreshToken).digest('hex');
+    const expiresAt = new Date(
+      Date.now() +
+        this.config.getOrThrow<number>('REFRESH_SESSION_TTL_SECONDS') * 1000,
+    );
+
+    await this.prisma.refreshSession.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt,
+      },
+    });
+
+    const accessToken = await this.accessTokens.issue(user.id);
+
+    return {
+      user: { id: user.id, email: user.email },
       accessToken,
       refreshToken,
     };
