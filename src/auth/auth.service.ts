@@ -1,6 +1,7 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import {
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -30,6 +31,12 @@ export interface AdminUserInfo extends AuthenticatedUserInfo {
   emailVerifiedAt: string | null;
   createdAt: string;
   roles: string[];
+}
+
+export interface AdminSessionInfo {
+  id: string;
+  createdAt: string;
+  expiresAt: string;
 }
 
 export type RegistrationResult = AuthenticatedUserInfo;
@@ -129,18 +136,31 @@ export class AuthService {
     const tokenHash = createHash(REFRESH_TOKEN_HASH_ALGORITHM)
       .update(refreshToken)
       .digest('hex');
+    const sessionId = randomUUID();
     const expiresAt = new Date(
       Date.now() +
         this.config.getOrThrow<number>('REFRESH_SESSION_TTL_SECONDS') * 1000,
     );
 
-    await this.prisma.public.RefreshSession.create({
-      userId: user.id,
-      tokenHash: toVarchar(tokenHash, REFRESH_TOKEN_HASH_MAX_LENGTH),
-      expiresAt: expiresAt.toISOString(),
+    await this.prisma.client.transaction(async (transaction) => {
+      await transaction.orm.public.AuthSession.create({
+        id: sessionId,
+        userId: user.id,
+        expiresAt: expiresAt.toISOString(),
+      });
+      await transaction.orm.public.RefreshSession.create({
+        userId: user.id,
+        sessionId,
+        tokenHash: toVarchar(tokenHash, REFRESH_TOKEN_HASH_MAX_LENGTH),
+        expiresAt: expiresAt.toISOString(),
+      });
     });
 
-    const accessToken = await this.accessTokens.issue(user.id, user.clientId);
+    const accessToken = await this.accessTokens.issue(
+      user.id,
+      user.clientId,
+      sessionId,
+    );
 
     return {
       user: { id: user.id, email: user.email },
@@ -160,26 +180,34 @@ export class AuthService {
     const tokenHash = createHash(REFRESH_TOKEN_HASH_ALGORITHM)
       .update(refreshToken)
       .digest('hex');
-    const session = await this.prisma.public.RefreshSession.where({
-      tokenHash: toVarchar(tokenHash, REFRESH_TOKEN_HASH_MAX_LENGTH),
-    }).first();
+    await this.prisma.client.transaction(async (transaction) => {
+      const session = await transaction.orm.public.RefreshSession.where({
+        tokenHash: toVarchar(tokenHash, REFRESH_TOKEN_HASH_MAX_LENGTH),
+      }).first();
 
-    if (!session || session.revokedAt !== null) {
-      return;
-    }
+      if (!session) {
+        return;
+      }
 
-    const user = await this.prisma.public.User.where({
-      id: session.userId,
-    }).first();
+      const user = await transaction.orm.public.User.where({
+        id: session.userId,
+      }).first();
 
-    if (!user || user.clientId !== clientId) {
-      return;
-    }
+      if (!user || user.clientId !== clientId) {
+        return;
+      }
 
-    await this.prisma.public.RefreshSession.where({
-      id: session.id,
-      revokedAt: null,
-    }).update({ revokedAt: new Date().toISOString() });
+      const now = new Date().toISOString();
+      await transaction.orm.public.AuthSession.where({
+        id: session.sessionId,
+        userId: session.userId,
+        revokedAt: null,
+      }).update({ revokedAt: now });
+      await transaction.orm.public.RefreshSession.where({
+        sessionId: session.sessionId,
+        revokedAt: null,
+      }).updateAll({ revokedAt: now });
+    });
   }
 
   async getCurrentUser(
@@ -233,6 +261,149 @@ export class AuthService {
       createdAt: user.createdAt,
       roles,
     };
+  }
+
+  async getClientUserSessions(
+    targetUserId: string,
+    clientId: string,
+  ): Promise<AdminSessionInfo[]> {
+    const user = await this.prisma.public.User.where({
+      id: targetUserId,
+      clientId,
+    }).first();
+
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    const now = Date.now();
+    const sessions = await this.prisma.public.AuthSession.where({
+      userId: user.id,
+      revokedAt: null,
+    }).all();
+
+    return sessions
+      .filter((session) => Date.parse(session.expiresAt) > now)
+      .map((session) => ({
+        id: session.id,
+        createdAt: session.createdAt,
+        expiresAt: session.expiresAt,
+      }));
+  }
+
+  async disableClientUser(
+    actorUserId: string,
+    targetUserId: string,
+    clientId: string,
+  ): Promise<void> {
+    if (actorUserId === targetUserId) {
+      throw new ForbiddenException('Administrators cannot disable themselves.');
+    }
+
+    await this.prisma.client.transaction(async (transaction) => {
+      const user = await transaction.orm.public.User.where({
+        id: targetUserId,
+        clientId,
+      }).first();
+
+      if (!user) {
+        throw new NotFoundException('User not found.');
+      }
+
+      const now = new Date().toISOString();
+      await transaction.orm.public.User.where({
+        id: user.id,
+        clientId,
+      }).update({ status: 'DISABLED' });
+      await transaction.orm.public.AuthSession.where({
+        userId: user.id,
+        revokedAt: null,
+      }).updateAll({ revokedAt: now });
+      await transaction.orm.public.RefreshSession.where({
+        userId: user.id,
+        revokedAt: null,
+      }).updateAll({ revokedAt: now });
+      await transaction.orm.public.AdminAuditEvent.create({
+        clientId,
+        actorUserId,
+        targetUserId: user.id,
+        action: toVarchar('USER_DISABLED', 64),
+      });
+    });
+  }
+
+  async enableClientUser(
+    actorUserId: string,
+    targetUserId: string,
+    clientId: string,
+  ): Promise<void> {
+    await this.prisma.client.transaction(async (transaction) => {
+      const user = await transaction.orm.public.User.where({
+        id: targetUserId,
+        clientId,
+      }).first();
+
+      if (!user) {
+        throw new NotFoundException('User not found.');
+      }
+
+      await transaction.orm.public.User.where({
+        id: user.id,
+        clientId,
+      }).update({ status: 'ACTIVE' });
+      await transaction.orm.public.AdminAuditEvent.create({
+        clientId,
+        actorUserId,
+        targetUserId: user.id,
+        action: toVarchar('USER_ENABLED', 64),
+      });
+    });
+  }
+
+  async revokeClientUserSession(
+    actorUserId: string,
+    targetUserId: string,
+    clientId: string,
+    sessionId: string,
+  ): Promise<void> {
+    await this.prisma.client.transaction(async (transaction) => {
+      const user = await transaction.orm.public.User.where({
+        id: targetUserId,
+        clientId,
+      }).first();
+
+      if (!user) {
+        throw new NotFoundException('User not found.');
+      }
+
+      const session = await transaction.orm.public.AuthSession.where({
+        id: sessionId,
+        userId: user.id,
+        revokedAt: null,
+      }).first();
+
+      if (!session || Date.parse(session.expiresAt) <= Date.now()) {
+        throw new NotFoundException('Active session not found.');
+      }
+
+      const now = new Date().toISOString();
+      await transaction.orm.public.AuthSession.where({
+        id: session.id,
+        userId: user.id,
+        revokedAt: null,
+      }).update({ revokedAt: now });
+      await transaction.orm.public.RefreshSession.where({
+        sessionId: session.id,
+        revokedAt: null,
+      }).updateAll({ revokedAt: now });
+      await transaction.orm.public.AdminAuditEvent.create({
+        clientId,
+        actorUserId,
+        targetUserId: user.id,
+        action: toVarchar('SESSION_REVOKED', 64),
+        sessionId: session.id,
+      });
+    });
   }
 
   async resendVerificationEmail(
@@ -325,6 +496,10 @@ export class AuthService {
 
         // A revoked token proves replay; revoke the user's other active sessions too.
         if (session.revokedAt !== null) {
+          await transaction.orm.public.AuthSession.where({
+            userId: session.userId,
+            revokedAt: null,
+          }).updateAll({ revokedAt: nowString });
           await sessions
             .where({ userId: session.userId, revokedAt: null })
             .updateAll({ revokedAt: nowString });
@@ -333,6 +508,19 @@ export class AuthService {
 
         // Expired sessions cannot be rotated.
         if (Date.parse(session.expiresAt) <= now.getTime()) {
+          return { kind: 'invalid' } as const;
+        }
+
+        const authSession = await transaction.orm.public.AuthSession.where({
+          id: session.sessionId,
+          userId: session.userId,
+          revokedAt: null,
+        }).first();
+
+        if (
+          !authSession ||
+          Date.parse(authSession.expiresAt) <= now.getTime()
+        ) {
           return { kind: 'invalid' } as const;
         }
 
@@ -347,9 +535,13 @@ export class AuthService {
 
         // Disable refresh for inactive users and invalidate this session.
         if (user.status !== 'ACTIVE' || !user.emailVerifiedAt) {
+          await transaction.orm.public.AuthSession.where({
+            id: authSession.id,
+            revokedAt: null,
+          }).update({ revokedAt: nowString });
           await sessions
-            .where({ id: session.id, revokedAt: null })
-            .update({ revokedAt: nowString });
+            .where({ sessionId: session.sessionId, revokedAt: null })
+            .updateAll({ revokedAt: nowString });
           return { kind: 'invalid' } as const;
         }
 
@@ -359,19 +551,38 @@ export class AuthService {
           .update({ revokedAt: nowString });
 
         if (!revokedSession) {
+          await transaction.orm.public.AuthSession.where({
+            userId: session.userId,
+            revokedAt: null,
+          }).updateAll({ revokedAt: nowString });
           await sessions
             .where({ userId: session.userId, revokedAt: null })
             .updateAll({ revokedAt: nowString });
           return { kind: 'reused' } as const;
         }
 
+        const renewedAuthSession =
+          await transaction.orm.public.AuthSession.where({
+            id: authSession.id,
+            revokedAt: null,
+          }).update({ expiresAt: expiresAt.toISOString() });
+
+        if (!renewedAuthSession) {
+          return { kind: 'invalid' } as const;
+        }
+
         // Store only the replacement token hash in the same transaction as revocation.
         await sessions.create({
           userId: user.id,
+          sessionId: authSession.id,
           tokenHash: toVarchar(rotatedTokenHash, REFRESH_TOKEN_HASH_MAX_LENGTH),
           expiresAt: expiresAt.toISOString(),
         });
-        const accessToken = await this.accessTokens.issue(user.id, clientId);
+        const accessToken = await this.accessTokens.issue(
+          user.id,
+          clientId,
+          authSession.id,
+        );
 
         return {
           kind: 'rotated',

@@ -1,8 +1,9 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-jwt';
 import type { Request } from 'express';
+import type { PrismaService } from '../../database/prisma.service.js';
 import {
   ACCESS_TOKEN_ALGORITHM,
   ACCESS_TOKEN_COOKIE,
@@ -12,6 +13,7 @@ import {
 export interface AuthenticatedUser {
   userId: string;
   clientId: string;
+  sessionId: string;
 }
 
 export function extractAccessToken(request: Request): string | null {
@@ -32,7 +34,10 @@ export function extractAccessToken(request: Request): string | null {
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    @Inject('PRISMA_SERVICE') private readonly prisma: PrismaService,
+  ) {
     super({
       jwtFromRequest: extractAccessToken,
       ignoreExpiration: false,
@@ -41,7 +46,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  validate(payload: unknown): AuthenticatedUser {
+  async validate(payload: unknown): Promise<AuthenticatedUser> {
     if (
       typeof payload !== 'object' ||
       payload === null ||
@@ -50,11 +55,40 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       payload.sub.trim().length === 0 ||
       !('clientId' in payload) ||
       typeof payload.clientId !== 'string' ||
-      payload.clientId.trim().length === 0
+      payload.clientId.trim().length === 0 ||
+      !('sessionId' in payload) ||
+      typeof payload.sessionId !== 'string' ||
+      !UUID_PATTERN.test(payload.sessionId)
     ) {
       throw new UnauthorizedException('Invalid access token.');
     }
 
-    return { userId: payload.sub, clientId: payload.clientId };
+    const session = await this.prisma.public.AuthSession.where({
+      id: payload.sessionId,
+      userId: payload.sub,
+      revokedAt: null,
+    }).first();
+
+    if (!session || Date.parse(session.expiresAt) <= Date.now()) {
+      throw new UnauthorizedException('Invalid or expired access token.');
+    }
+
+    const user = await this.prisma.public.User.where({
+      id: payload.sub,
+      clientId: payload.clientId,
+    }).first();
+
+    if (!user || user.status !== 'ACTIVE' || !user.emailVerifiedAt) {
+      throw new UnauthorizedException('Invalid or expired access token.');
+    }
+
+    return {
+      userId: payload.sub,
+      clientId: payload.clientId,
+      sessionId: payload.sessionId,
+    };
   }
 }
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

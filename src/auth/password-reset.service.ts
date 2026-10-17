@@ -122,6 +122,10 @@ export class PasswordResetService {
         userId: user.id,
         revokedAt: null,
       }).updateAll({ revokedAt: now });
+      await transaction.orm.public.AuthSession.where({
+        userId: user.id,
+        revokedAt: null,
+      }).updateAll({ revokedAt: now });
     });
   }
 

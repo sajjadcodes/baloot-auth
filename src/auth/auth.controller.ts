@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Param,
+  Patch,
   ParseUUIDPipe,
   Post,
   Req,
@@ -16,7 +18,11 @@ import { ApiHeader, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { Roles } from './decorators/roles.decorator.js';
 import { AuthCookiesService } from './auth-cookies.service.js';
-import { AuthService, type AdminUserInfo } from './auth.service.js';
+import {
+  AuthService,
+  type AdminSessionInfo,
+  type AdminUserInfo,
+} from './auth.service.js';
 import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
@@ -103,6 +109,144 @@ export class AuthController {
     @Param('userId', new ParseUUIDPipe()) userId: string,
   ): Promise<AdminUserInfo> {
     return this.auth.getClientUserForAdmin(userId, clientId);
+  }
+
+  @Get('admin/users/:userId/sessions')
+  @UseGuards(
+    ThrottlerGuard,
+    TrustedOriginGuard,
+    JwtAuthGuard,
+    AdminClientGuard,
+    RolesGuard,
+  )
+  @Roles('platform_admin')
+  @ApiOperation({
+    summary: 'List active sessions for a user',
+    description:
+      'Returns active session IDs and lifecycle timestamps for a user belonging to the authenticated admin’s client. Refresh-token material is never returned.',
+  })
+  @ApiHeader({
+    name: CLIENT_ID_HEADER,
+    description: 'Public ID of the registered application client.',
+    required: true,
+  })
+  @ApiParam({
+    name: 'userId',
+    description: 'UUID of a user belonging to the authenticated client.',
+    format: 'uuid',
+  })
+  async getAdminUserSessions(
+    @Headers(CLIENT_ID_HEADER) clientId: string,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+  ): Promise<AdminSessionInfo[]> {
+    return this.auth.getClientUserSessions(userId, clientId);
+  }
+
+  @Patch('admin/users/:userId/disable')
+  @UseGuards(
+    ThrottlerGuard,
+    TrustedOriginGuard,
+    JwtAuthGuard,
+    AdminClientGuard,
+    RolesGuard,
+  )
+  @Roles('platform_admin')
+  @ApiOperation({
+    summary: 'Disable a user account',
+    description:
+      'Disables a same-client account, revokes all of its sessions and access tokens, and records the action in the admin audit log. Administrators cannot disable themselves.',
+  })
+  @ApiHeader({
+    name: CLIENT_ID_HEADER,
+    description: 'Public ID of the registered application client.',
+    required: true,
+  })
+  @ApiParam({
+    name: 'userId',
+    description: 'UUID of a user belonging to the authenticated client.',
+    format: 'uuid',
+  })
+  async disableAdminUser(
+    @Req() request: Request & { user: AuthenticatedUser },
+    @Headers(CLIENT_ID_HEADER) clientId: string,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+  ): Promise<void> {
+    await this.auth.disableClientUser(request.user.userId, userId, clientId);
+  }
+
+  @Patch('admin/users/:userId/enable')
+  @UseGuards(
+    ThrottlerGuard,
+    TrustedOriginGuard,
+    JwtAuthGuard,
+    AdminClientGuard,
+    RolesGuard,
+  )
+  @Roles('platform_admin')
+  @ApiOperation({
+    summary: 'Enable a user account',
+    description:
+      'Re-enables a same-client account and records the action in the admin audit log. Previously revoked sessions remain revoked; the user must authenticate again.',
+  })
+  @ApiHeader({
+    name: CLIENT_ID_HEADER,
+    description: 'Public ID of the registered application client.',
+    required: true,
+  })
+  @ApiParam({
+    name: 'userId',
+    description: 'UUID of a user belonging to the authenticated client.',
+    format: 'uuid',
+  })
+  async enableAdminUser(
+    @Req() request: Request & { user: AuthenticatedUser },
+    @Headers(CLIENT_ID_HEADER) clientId: string,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+  ): Promise<void> {
+    await this.auth.enableClientUser(request.user.userId, userId, clientId);
+  }
+
+  @Delete('admin/users/:userId/sessions/:sessionId')
+  @UseGuards(
+    ThrottlerGuard,
+    TrustedOriginGuard,
+    JwtAuthGuard,
+    AdminClientGuard,
+    RolesGuard,
+  )
+  @Roles('platform_admin')
+  @ApiOperation({
+    summary: 'Revoke a user session',
+    description:
+      'Revokes a same-client session immediately, including access tokens issued for it, and records the action in the admin audit log.',
+  })
+  @ApiHeader({
+    name: CLIENT_ID_HEADER,
+    description: 'Public ID of the registered application client.',
+    required: true,
+  })
+  @ApiParam({
+    name: 'userId',
+    description: 'UUID of a user belonging to the authenticated client.',
+    format: 'uuid',
+  })
+  @ApiParam({
+    name: 'sessionId',
+    description: 'UUID of the session returned by the session-list endpoint.',
+    format: 'uuid',
+  })
+  async revokeAdminUserSession(
+    @Req() request: Request & { user: AuthenticatedUser },
+    @Headers(CLIENT_ID_HEADER) clientId: string,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+    @Param('sessionId', new ParseUUIDPipe()) sessionId: string,
+  ): Promise<void> {
+    await this.auth.revokeClientUserSession(
+      request.user.userId,
+      userId,
+      clientId,
+      sessionId,
+    );
   }
 
   @Post('register')
@@ -223,7 +367,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Reset a password',
     description:
-      'Uses a short-lived, single-use email token to set a new password and revoke all active refresh sessions.',
+      'Uses a short-lived, single-use email token to set a new password and revoke all active sessions.',
   })
   @ApiHeader({
     name: CLIENT_ID_HEADER,
@@ -320,7 +464,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Log out a user',
     description:
-      'Revokes the refresh session from the HttpOnly cookie when valid for this client, then clears the access and refresh cookies. Any issued access token remains valid until it expires.',
+      'Revokes the session from the HttpOnly refresh cookie when valid for this client, immediately invalidating its access tokens, then clears the authentication cookies.',
   })
   @ApiHeader({
     name: CLIENT_ID_HEADER,

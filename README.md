@@ -8,7 +8,7 @@ It is designed to remain independent of any specific product, company, or busine
 
 ## Implementation Status
 
-The current foundation includes validated startup configuration, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, a Prisma ORM 8 PostgreSQL contract and runtime, Argon2id password hashing, short-lived JWT access-token issuance with a Passport JWT strategy, and a globally applied success-response interceptor and exception filter. Application clients have registered origins; users, email uniqueness, authentication requests, and access tokens are scoped to one client. The root health response and authentication routes for registration, email verification, login, refresh, logout, current-user lookup, and password reset are implemented. Email verification is required before login. Reusable role metadata and a database-backed roles guard are implemented; administrative operations and role-management endpoints remain planned.
+The current foundation includes validated startup configuration, request validation, credentialed CORS with an explicit origin allowlist, Swagger/OpenAPI, a Prisma ORM 8 PostgreSQL contract and runtime, Argon2id password hashing, short-lived JWT access tokens bound to revocable sessions, and a globally applied success-response interceptor and exception filter. Application clients have registered origins; users, email uniqueness, authentication requests, and access tokens are scoped to one client. Authentication routes for registration, email verification, login, refresh, logout, current-user lookup, password reset, and same-client account/session administration are implemented. Email verification is required before login. Reusable role metadata and a database-backed roles guard are implemented.
 
 HTTP responses use a globally applied envelope: successful responses contain `success`, the HTTP `code`, a `message`, and endpoint `data`; errors contain `success: false`, the HTTP `code`, and a safe `message`. Unexpected server errors are logged server-side without stack traces or exception messages and returned to clients as a generic internal-server-error message.
 
@@ -183,18 +183,22 @@ The root `GET /` and authentication routes listed below are implemented. Success
 
 The authentication endpoint status is:
 
-| Method | Endpoint                    | Purpose                                                          |
-| ------ | --------------------------- | ---------------------------------------------------------------- |
-| `POST` | `/auth/register`            | Implemented: create an account and send verification email       |
-| `POST` | `/auth/verify-email`        | Implemented: verify an email address                             |
-| `POST` | `/auth/resend-verification` | Implemented: resend verification email                           |
-| `POST` | `/auth/login`               | Implemented: authenticate a user and set authentication cookies  |
-| `POST` | `/auth/refresh`             | Implemented: rotate tokens and set authentication cookies        |
-| `POST` | `/auth/logout`              | Implemented: revoke the refresh session and clear cookies        |
-| `GET`  | `/auth/me`                  | Implemented: retrieve the authenticated user's information       |
-| `GET`  | `/auth/admin/users/:userId` | Implemented: inspect a same-client account (platform admin only) |
-| `POST` | `/auth/forgot-password`     | Implemented: request a password reset                            |
-| `POST` | `/auth/reset-password`      | Implemented: reset a password                                    |
+| Method   | Endpoint                                        | Purpose                                                          |
+| -------- | ----------------------------------------------- | ---------------------------------------------------------------- |
+| `POST`   | `/auth/register`                                | Implemented: create an account and send verification email       |
+| `POST`   | `/auth/verify-email`                            | Implemented: verify an email address                             |
+| `POST`   | `/auth/resend-verification`                     | Implemented: resend verification email                           |
+| `POST`   | `/auth/login`                                   | Implemented: authenticate a user and set authentication cookies  |
+| `POST`   | `/auth/refresh`                                 | Implemented: rotate tokens and set authentication cookies        |
+| `POST`   | `/auth/logout`                                  | Implemented: revoke the refresh session and clear cookies        |
+| `GET`    | `/auth/me`                                      | Implemented: retrieve the authenticated user's information       |
+| `GET`    | `/auth/admin/users/:userId`                     | Implemented: inspect a same-client account (platform admin only) |
+| `GET`    | `/auth/admin/users/:userId/sessions`            | Implemented: list active sessions (platform admin only)          |
+| `PATCH`  | `/auth/admin/users/:userId/disable`             | Implemented: disable a same-client account and revoke sessions   |
+| `PATCH`  | `/auth/admin/users/:userId/enable`              | Implemented: re-enable a same-client account                     |
+| `DELETE` | `/auth/admin/users/:userId/sessions/:sessionId` | Implemented: revoke one session immediately                      |
+| `POST`   | `/auth/forgot-password`                         | Implemented: request a password reset                            |
+| `POST`   | `/auth/reset-password`                          | Implemented: reset a password                                    |
 
 Refer to Swagger for the exact request formats, response contracts, validation requirements, and error codes.
 
@@ -218,7 +222,7 @@ Configure `PASSWORD_RESET_SECRET` as a private random secret of at least 32 char
 
 Call `POST /auth/forgot-password` with `email` and `X-Client-Id`. It returns the same message whether or not an active, verified account exists and is rate-limited. If eligible, the user receives a short-lived reset link. The frontend reads the token from the URL fragment, removes it from the address bar, and sends the token plus the new 12–128 character password in a credentialed `POST /auth/reset-password` request with the same client ID.
 
-The signed reset token is bound to the current password hash using a keyed fingerprint, so it becomes invalid after a successful password change without storing a reset token or adding a database table. The password update and revocation of all active refresh sessions occur in one transaction; a conditional update makes a token single-use even if concurrent reset requests race. Existing access tokens remain valid until their short expiry, after which the user must log in again because refresh sessions have been revoked.
+The signed reset token is bound to the current password hash using a keyed fingerprint, so it becomes invalid after a successful password change without storing a reset token. The password update and revocation of all active sessions occur in one transaction; a conditional update makes a token single-use even if concurrent reset requests race. Session-bound access tokens are invalidated immediately.
 
 ### Planned Authenticated Requests
 
@@ -228,11 +232,11 @@ For a cross-origin frontend, configure the HTTP client to include credentials an
 
 ### Refresh
 
-Send a credentialed `POST` request to `/auth/refresh` with the public `X-Client-Id` header and an allowed origin. The browser sends the HttpOnly refresh cookie automatically. The service rotates the session and sets new cookies; it never returns tokens in the response body. Reusing a revoked refresh token revokes that user's active refresh sessions.
+Send a credentialed `POST` request to `/auth/refresh` with the public `X-Client-Id` header and an allowed origin. The browser sends the HttpOnly refresh cookie automatically. The service rotates the refresh token within the same authentication session and sets new cookies; it never returns tokens in the response body. Reusing a revoked refresh token revokes that user's active sessions.
 
 ### Logout
 
-Send a credentialed request to `POST /auth/logout` with the public `X-Client-Id` header and an allowed origin. The browser sends its HttpOnly cookies automatically. The service revokes the matching refresh session, if present and valid for that client, and clears both authentication cookies. Logout is idempotent when the refresh cookie is missing, invalid, or already revoked. An issued access token remains valid until it expires.
+Send a credentialed request to `POST /auth/logout` with the public `X-Client-Id` header and an allowed origin. The browser sends its HttpOnly cookies automatically. The service revokes the matching session, if present and valid for that client, immediately invalidating its access tokens, and clears both authentication cookies. Logout is idempotent when the refresh cookie is missing, invalid, or already revoked.
 
 ### Current User
 
@@ -240,7 +244,7 @@ Send a credentialed request to `GET /auth/me` with the public `X-Client-Id` head
 
 ### CSRF Protection and Security Requirements
 
-All state-changing authentication routes (`POST /auth/register`, `/auth/verify-email`, `/auth/resend-verification`, `/auth/forgot-password`, `/auth/reset-password`, `/auth/login`, `/auth/refresh`, and `/auth/logout`) use `TrustedOriginGuard`. It requires an `Origin` header, checks for an exact match in `CORS_ORIGINS`, then verifies that the origin is assigned to the active client identified by `X-Client-Id`. Requests with missing, unlisted, or client-mismatched origins are rejected. Keep this guard on any future state-changing endpoint that authenticates with cookies.
+All state-changing authentication routes, including account disable/enable and session revocation under `/auth/admin`, use `TrustedOriginGuard`. It requires an `Origin` header, checks for an exact match in `CORS_ORIGINS`, then verifies that the origin is assigned to the active client identified by `X-Client-Id`. Requests with missing, unlisted, or client-mismatched origins are rejected. Keep this guard on any future state-changing endpoint that authenticates with cookies.
 
 This is strict origin-based CSRF protection for browser requests, independent of the browser's CORS enforcement; CORS alone is not the security check. Browser JavaScript cannot set the `Origin` header arbitrarily, while non-browser callers can, so the origin and client ID are not authentication credentials. Continue to require passwords or signed tokens as appropriate. This defense does not protect against script execution on a trusted origin (XSS); `SameSite` cookies and HTTPS are complementary protections.
 
@@ -260,19 +264,19 @@ Baloot Auth begins with two global roles:
 
 Public registration cannot assign privileged roles.
 
-The `@Roles(...)` decorator and `RolesGuard` support role-based access checks. The guard checks active, verified account status and current role assignments in the database rather than relying on role claims in access tokens. `GET /auth/me` requires either the `user` or `platform_admin` role. `GET /auth/admin/users/:userId` requires `platform_admin`, validates the requested UUID, and returns only account status, email-verification time, creation time, and built-in role names for users belonging to the administrator's own client. The endpoint also requires that the public `X-Client-Id` match the admin's access token, enforced by `AdminClientGuard`, and that the browser origin is trusted. Reuse this client-scope guard for future admin operations; it deliberately offers no cross-client access, user listing, role mutation, or account mutation. Apply `JwtAuthGuard` before `AdminClientGuard` and `RolesGuard` on admin routes so the request has a validated identity and matching client context.
+The `@Roles(...)` decorator and `RolesGuard` support role-based access checks. The guard checks active, verified account status and current role assignments in the database rather than relying on role claims in access tokens. `GET /auth/me` requires either the `user` or `platform_admin` role. Same-client `/auth/admin/users/:userId` operations require `platform_admin` and a trusted origin; `AdminClientGuard` binds the public `X-Client-Id` to the authenticated token before role checks. Administrators can inspect accounts and active sessions, disable or re-enable accounts, and revoke individual sessions. Disabling an account revokes all sessions and its access tokens. Re-enabling never restores revoked sessions. Administrators cannot disable themselves. Successful mutations are recorded transactionally in `admin_audit_events`. These routes do not support cross-client access, user listing, or role mutation. Apply `JwtAuthGuard` before `AdminClientGuard` and `RolesGuard` on admin routes. See [the account and session administration guide](./docs/account-session-administration.md).
 
 These roles provide basic authorization. Applications using Baloot Auth remain responsible for their own business rules and resource-level permissions.
 
 A valid identity does not automatically authorize access to every resource.
 
-Role assignment and account mutation endpoints are not implemented. Assigning `platform_admin` must remain restricted to the trusted seed workflow or another approved administrative process; never expose role escalation through public registration or client-controlled inputs.
+Assigning `platform_admin` remains restricted to the trusted seed workflow or another approved administrative process; never expose role escalation through public registration or client-controlled inputs. See [docs/account-session-administration.md](./docs/account-session-administration.md) for operator procedures and required schema rollout.
 
 ## Database and Migrations
 
 Baloot Auth uses PostgreSQL and Prisma ORM 8.
 
-The data contract is maintained in `src/prisma/contract.prisma`. After changing it, run `pnpm contract:emit` and commit the updated `contract.json` and `contract.d.ts` artifacts with the source contract. The Nest service uses the Prisma ORM 8 PostgreSQL runtime; it does not use Prisma 7's generated `PrismaClient` or driver adapter.
+The data contract is maintained in `src/prisma/contract.prisma`. After changing it, run `pnpm contract:emit` and update the contract artifacts. The contract artifacts and migration for account/session administration have been committed. Its migration requires `refresh_sessions` to be empty; see [the account and session administration guide](./docs/account-session-administration.md) for the rollout. The Nest service uses the Prisma ORM 8 PostgreSQL runtime; it does not use Prisma 7's generated `PrismaClient` or driver adapter.
 
 **Database migrations are controlled by the project maintainer.**
 

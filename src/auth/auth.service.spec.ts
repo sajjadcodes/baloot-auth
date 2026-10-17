@@ -1,6 +1,11 @@
 import 'reflect-metadata';
 import { createHash } from 'node:crypto';
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { PrismaService } from '../database/prisma.service.js';
 import { AccessTokenService } from './access-token.service.js';
@@ -24,13 +29,25 @@ describe('AuthService', () => {
   let whereRefreshSession: jest.Mock;
   let updateRefreshSession: jest.Mock;
   let updateAllRefreshSessions: jest.Mock;
-  let createSession: jest.Mock;
+  let findAuthSession: jest.Mock;
+  let findAllAuthSessions: jest.Mock;
+  let whereAuthSession: jest.Mock;
+  let createAuthSession: jest.Mock;
+  let updateAuthSession: jest.Mock;
+  let updateAllAuthSessions: jest.Mock;
+  let createAuditEvent: jest.Mock;
+  let createRefreshSession: jest.Mock;
   let transaction: {
     orm: {
       public: {
         Role: { where: jest.Mock };
         User: { create: jest.Mock; where: jest.Mock };
         UserRole: { create: jest.Mock };
+        AuthSession: {
+          create: jest.Mock;
+          where: jest.Mock;
+        };
+        AdminAuditEvent: { create: jest.Mock };
         RefreshSession: {
           create: jest.Mock;
           where: jest.Mock;
@@ -45,22 +62,33 @@ describe('AuthService', () => {
   let sendVerificationEmail: jest.Mock;
   let verifyEmailToken: jest.Mock;
   let refreshSessionData:
-    { userId: string; tokenHash: string; expiresAt: string } | undefined;
-  let loginSessionData:
-    { userId: string; tokenHash: string; expiresAt: string } | undefined;
+    | {
+        userId: string;
+        sessionId: string;
+        tokenHash: string;
+        expiresAt: string;
+      }
+    | undefined;
+  let authSessionData:
+    { id: string; userId: string; expiresAt: string } | undefined;
 
   beforeEach(() => {
     jest.clearAllMocks();
     refreshSessionData = undefined;
-    loginSessionData = undefined;
+    authSessionData = undefined;
     const findRole = jest
       .fn()
       .mockReturnValue({ first: jest.fn().mockResolvedValue(role) });
     const createUser = jest.fn().mockResolvedValue({ ...user, clientId });
-    const createRefreshSession = jest
+    createRefreshSession = jest
       .fn()
       .mockImplementation(
-        (input: { userId: string; tokenHash: string; expiresAt: string }) => {
+        (input: {
+          userId: string;
+          sessionId: string;
+          tokenHash: string;
+          expiresAt: string;
+        }) => {
           refreshSessionData = input;
           return Promise.resolve({});
         },
@@ -91,25 +119,41 @@ describe('AuthService', () => {
     findRefreshSession = jest.fn();
     updateRefreshSession = jest.fn();
     updateAllRefreshSessions = jest.fn().mockResolvedValue([]);
+    findAuthSession = jest.fn();
+    findAllAuthSessions = jest.fn().mockResolvedValue([]);
+    updateAuthSession = jest.fn().mockResolvedValue({ id: 'auth-session-1' });
+    updateAllAuthSessions = jest.fn().mockResolvedValue([]);
+    whereAuthSession = jest.fn().mockReturnValue({
+      first: findAuthSession,
+      all: findAllAuthSessions,
+      update: updateAuthSession,
+      updateAll: updateAllAuthSessions,
+    });
+    createAuthSession = jest
+      .fn()
+      .mockImplementation(
+        (input: { id: string; userId: string; expiresAt: string }) => {
+          authSessionData = input;
+          return Promise.resolve({});
+        },
+      );
+    createAuditEvent = jest.fn().mockResolvedValue({});
     whereRefreshSession = jest.fn().mockReturnValue({
       first: findRefreshSession,
       update: updateRefreshSession,
       updateAll: updateAllRefreshSessions,
     });
-    createSession = jest
-      .fn()
-      .mockImplementation(
-        (input: { userId: string; tokenHash: string; expiresAt: string }) => {
-          loginSessionData = input;
-          return Promise.resolve({});
-        },
-      );
     transaction = {
       orm: {
         public: {
           Role: { where: findRole },
           User: { create: createUser, where: whereUser },
           UserRole: { create: jest.fn().mockResolvedValue({}) },
+          AuthSession: {
+            create: createAuthSession,
+            where: whereAuthSession,
+          },
+          AdminAuditEvent: { create: createAuditEvent },
           RefreshSession: {
             create: createRefreshSession,
             where: whereRefreshSession,
@@ -135,8 +179,13 @@ describe('AuthService', () => {
             where: whereUser,
           },
           UserRole: { include: includeRoleAssignment },
+          AuthSession: {
+            create: createAuthSession,
+            where: whereAuthSession,
+          },
+          AdminAuditEvent: { create: createAuditEvent },
           RefreshSession: {
-            create: createSession,
+            create: createRefreshSession,
             where: whereRefreshSession,
           },
         },
@@ -184,7 +233,8 @@ describe('AuthService', () => {
       email: user.email,
     });
     expect(refreshSessionData).toBeUndefined();
-    expect(createSession).not.toHaveBeenCalled();
+    expect(createRefreshSession).not.toHaveBeenCalled();
+    expect(createAuthSession).not.toHaveBeenCalled();
     expect(issueAccessToken).not.toHaveBeenCalled();
     expect(result).toEqual(user);
   });
@@ -235,15 +285,24 @@ describe('AuthService', () => {
       email: 'person@example.com',
     });
     expect(hashPassword).not.toHaveBeenCalled();
-    expect(createSession).toHaveBeenCalledTimes(1);
-    expect(loginSessionData).toBeDefined();
-    expect(loginSessionData?.userId).toBe(user.id);
-    expect(loginSessionData?.tokenHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(loginSessionData?.tokenHash).not.toBe(result.refreshToken);
-    expect(Date.parse(loginSessionData!.expiresAt)).toBeGreaterThanOrEqual(
+    expect(createRefreshSession).toHaveBeenCalledTimes(1);
+    expect(createAuthSession).toHaveBeenCalledTimes(1);
+    expect(authSessionData?.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(refreshSessionData).toBeDefined();
+    expect(refreshSessionData?.userId).toBe(user.id);
+    expect(refreshSessionData?.sessionId).toBe(authSessionData?.id);
+    expect(refreshSessionData?.tokenHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(refreshSessionData?.tokenHash).not.toBe(result.refreshToken);
+    expect(Date.parse(refreshSessionData!.expiresAt)).toBeGreaterThanOrEqual(
       before + 2592000000,
     );
-    expect(issueAccessToken).toHaveBeenCalledWith(user.id, clientId);
+    expect(issueAccessToken).toHaveBeenCalledWith(
+      user.id,
+      clientId,
+      authSessionData?.id,
+    );
     expect(result.user).toEqual(user);
     expect(result.accessToken).toBe('signed-access');
     expect(typeof result.refreshToken).toBe('string');
@@ -255,7 +314,8 @@ describe('AuthService', () => {
     await expect(
       service.login('missing@example.com', 'password', clientId),
     ).rejects.toThrow('Invalid email or password.');
-    expect(createSession).not.toHaveBeenCalled();
+    expect(createRefreshSession).not.toHaveBeenCalled();
+    expect(createAuthSession).not.toHaveBeenCalled();
     expect(issueAccessToken).not.toHaveBeenCalled();
   });
 
@@ -272,7 +332,8 @@ describe('AuthService', () => {
     await expect(
       service.login(user.email, 'wrong password', clientId),
     ).rejects.toThrow('Invalid email or password.');
-    expect(createSession).not.toHaveBeenCalled();
+    expect(createRefreshSession).not.toHaveBeenCalled();
+    expect(createAuthSession).not.toHaveBeenCalled();
     expect(issueAccessToken).not.toHaveBeenCalled();
   });
 
@@ -289,7 +350,8 @@ describe('AuthService', () => {
     await expect(
       service.login(user.email, 'correct password', clientId),
     ).rejects.toThrow('Invalid email or password.');
-    expect(createSession).not.toHaveBeenCalled();
+    expect(createRefreshSession).not.toHaveBeenCalled();
+    expect(createAuthSession).not.toHaveBeenCalled();
     expect(issueAccessToken).not.toHaveBeenCalled();
   });
 
@@ -305,7 +367,8 @@ describe('AuthService', () => {
     await expect(
       service.login(user.email, 'correct password', clientId),
     ).rejects.toThrow('Invalid email or password.');
-    expect(createSession).not.toHaveBeenCalled();
+    expect(createRefreshSession).not.toHaveBeenCalled();
+    expect(createAuthSession).not.toHaveBeenCalled();
     expect(issueAccessToken).not.toHaveBeenCalled();
   });
 
@@ -478,6 +541,7 @@ describe('AuthService', () => {
     const existingToken = 'r'.repeat(43);
     const refreshSession = {
       id: 'session-1',
+      sessionId: 'auth-session-1',
       userId: user.id,
       tokenHash: 'stored-token-hash',
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -486,7 +550,8 @@ describe('AuthService', () => {
 
     beforeEach(() => {
       findRefreshSession.mockResolvedValue(refreshSession);
-      updateRefreshSession.mockResolvedValue(refreshSession);
+      findAuthSession.mockResolvedValue({ id: refreshSession.sessionId });
+      updateAuthSession.mockResolvedValue({ id: refreshSession.sessionId });
       findRefreshUser.mockResolvedValue({
         ...user,
         status: 'ACTIVE',
@@ -503,11 +568,19 @@ describe('AuthService', () => {
       expect(whereRefreshSession).toHaveBeenNthCalledWith(1, {
         tokenHash: createHashForTest(existingToken),
       });
-      expect(whereRefreshSession).toHaveBeenNthCalledWith(2, {
-        id: refreshSession.id,
+      expect(whereAuthSession).toHaveBeenCalledWith({
+        id: refreshSession.sessionId,
+        userId: refreshSession.userId,
         revokedAt: null,
       });
-      expect(updateRefreshSession).toHaveBeenCalledWith({
+      expect(whereRefreshSession).toHaveBeenNthCalledWith(2, {
+        sessionId: refreshSession.sessionId,
+        revokedAt: null,
+      });
+      expect(updateAuthSession).toHaveBeenCalledWith({
+        revokedAt: expect.any(String),
+      });
+      expect(updateAllRefreshSessions).toHaveBeenCalledWith({
         revokedAt: expect.any(String),
       });
     });
@@ -519,7 +592,8 @@ describe('AuthService', () => {
       await service.logout(existingToken, clientId);
 
       expect(whereRefreshSession).toHaveBeenCalledTimes(1);
-      expect(updateRefreshSession).not.toHaveBeenCalled();
+      expect(updateAuthSession).not.toHaveBeenCalled();
+      expect(updateAllRefreshSessions).not.toHaveBeenCalled();
     });
 
     it('does not revoke a session belonging to a different client', async () => {
@@ -531,10 +605,11 @@ describe('AuthService', () => {
 
       await service.logout(existingToken, clientId);
 
-      expect(updateRefreshSession).not.toHaveBeenCalled();
+      expect(updateAuthSession).not.toHaveBeenCalled();
+      expect(updateAllRefreshSessions).not.toHaveBeenCalled();
     });
 
-    it('does not revoke a session that was already revoked', async () => {
+    it('revokes the session family when logout presents an older rotated token', async () => {
       findRefreshSession.mockResolvedValue({
         ...refreshSession,
         revokedAt: new Date().toISOString(),
@@ -542,7 +617,12 @@ describe('AuthService', () => {
 
       await service.logout(existingToken, clientId);
 
-      expect(updateRefreshSession).not.toHaveBeenCalled();
+      expect(updateAuthSession).toHaveBeenCalledWith({
+        revokedAt: expect.any(String),
+      });
+      expect(updateAllRefreshSessions).toHaveBeenCalledWith({
+        revokedAt: expect.any(String),
+      });
     });
   });
 
@@ -550,6 +630,7 @@ describe('AuthService', () => {
     const existingToken = 'r'.repeat(43);
     const refreshSession = {
       id: 'session-1',
+      sessionId: 'auth-session-1',
       userId: user.id,
       tokenHash: 'stored-token-hash',
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -558,9 +639,14 @@ describe('AuthService', () => {
 
     beforeEach(() => {
       findRefreshSession.mockResolvedValue(refreshSession);
+      findAuthSession.mockResolvedValue({
+        id: refreshSession.sessionId,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      });
       updateRefreshSession.mockImplementation((data: { revokedAt: string }) =>
         Promise.resolve({ ...refreshSession, ...data }),
       );
+      updateAuthSession.mockResolvedValue({ id: refreshSession.sessionId });
       findRefreshUser.mockResolvedValue({
         ...user,
         status: 'ACTIVE',
@@ -581,6 +667,7 @@ describe('AuthService', () => {
       });
       expect(updateRefreshSession).toHaveBeenCalledTimes(1);
       expect(refreshSessionData?.userId).toBe(user.id);
+      expect(refreshSessionData?.sessionId).toBe(refreshSession.sessionId);
       expect(refreshSessionData?.tokenHash).toMatch(/^[a-f0-9]{64}$/);
       expect(refreshSessionData?.tokenHash).not.toBe(
         createHashForTest(existingToken),
@@ -590,7 +677,11 @@ describe('AuthService', () => {
       expect(result.refreshToken).not.toBe(existingToken);
       expect(result.user).toEqual(user);
       expect(result.accessToken).toBe('signed-access');
-      expect(issueAccessToken).toHaveBeenCalledWith(user.id, clientId);
+      expect(issueAccessToken).toHaveBeenCalledWith(
+        user.id,
+        clientId,
+        refreshSession.sessionId,
+      );
     });
 
     it('rejects malformed or unknown refresh tokens', async () => {
@@ -629,7 +720,7 @@ describe('AuthService', () => {
       await expect(service.refresh(existingToken, clientId)).rejects.toThrow(
         'Invalid or expired refresh token.',
       );
-      expect(updateRefreshSession).toHaveBeenCalledWith({
+      expect(updateAllRefreshSessions).toHaveBeenCalledWith({
         revokedAt: expect.any(String),
       });
       expect(refreshSessionData).toBeUndefined();
@@ -648,6 +739,9 @@ describe('AuthService', () => {
       expect(whereRefreshSession).toHaveBeenLastCalledWith({
         userId: user.id,
         revokedAt: null,
+      });
+      expect(updateAllAuthSessions).toHaveBeenCalledWith({
+        revokedAt: expect.any(String),
       });
       expect(refreshSessionData).toBeUndefined();
     });
@@ -676,7 +770,12 @@ describe('AuthService', () => {
       await expect(service.refresh(existingToken, clientId)).rejects.toThrow(
         'Invalid or expired refresh token.',
       );
-      expect(updateRefreshSession).toHaveBeenCalledTimes(1);
+      expect(updateAllRefreshSessions).toHaveBeenCalledWith({
+        revokedAt: expect.any(String),
+      });
+      expect(updateAuthSession).toHaveBeenCalledWith({
+        revokedAt: expect.any(String),
+      });
       expect(refreshSessionData).toBeUndefined();
     });
 
@@ -687,7 +786,180 @@ describe('AuthService', () => {
         'Invalid or expired refresh token.',
       );
       expect(updateAllRefreshSessions).toHaveBeenCalledTimes(1);
+      expect(updateAllAuthSessions).toHaveBeenCalledTimes(1);
       expect(refreshSessionData).toBeUndefined();
+    });
+  });
+
+  describe('admin account and session operations', () => {
+    const actorUserId = 'admin-user';
+    const targetUserId = 'target-user';
+    const sessionId = '00000000-0000-4000-8000-000000000003';
+
+    beforeEach(() => {
+      findRefreshUser.mockResolvedValue({
+        ...user,
+        id: targetUserId,
+        clientId,
+        status: 'ACTIVE',
+        emailVerifiedAt: new Date().toISOString(),
+      });
+    });
+
+    it('lists only unexpired active session metadata for a same-client user', async () => {
+      findAllAuthSessions.mockResolvedValue([
+        {
+          id: sessionId,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        },
+        {
+          id: 'expired-session',
+          createdAt: '2025-01-01T00:00:00.000Z',
+          expiresAt: new Date(Date.now() - 60_000).toISOString(),
+        },
+      ]);
+
+      await expect(
+        service.getClientUserSessions(targetUserId, clientId),
+      ).resolves.toEqual([
+        {
+          id: sessionId,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          expiresAt: expect.any(String),
+        },
+      ]);
+      expect(whereUser).toHaveBeenCalledWith({
+        id: targetUserId,
+        clientId,
+      });
+      expect(whereAuthSession).toHaveBeenCalledWith({
+        userId: targetUserId,
+        revokedAt: null,
+      });
+    });
+
+    it('disables a same-client account, revokes its sessions and records an audit event', async () => {
+      await expect(
+        service.disableClientUser(actorUserId, targetUserId, clientId),
+      ).resolves.toBeUndefined();
+
+      expect(updateUser).toHaveBeenCalledWith({ status: 'DISABLED' });
+      expect(updateAllAuthSessions).toHaveBeenCalledWith({
+        revokedAt: expect.any(String),
+      });
+      expect(updateAllRefreshSessions).toHaveBeenCalledWith({
+        revokedAt: expect.any(String),
+      });
+      expect(createAuditEvent).toHaveBeenCalledWith({
+        clientId,
+        actorUserId,
+        targetUserId,
+        action: 'USER_DISABLED',
+      });
+    });
+
+    it('prevents administrators from disabling their own account', async () => {
+      await expect(
+        service.disableClientUser(actorUserId, actorUserId, clientId),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(transact).not.toHaveBeenCalled();
+      expect(createAuditEvent).not.toHaveBeenCalled();
+    });
+
+    it('re-enables an account without restoring its revoked sessions', async () => {
+      await expect(
+        service.enableClientUser(actorUserId, targetUserId, clientId),
+      ).resolves.toBeUndefined();
+
+      expect(updateUser).toHaveBeenCalledWith({ status: 'ACTIVE' });
+      expect(updateAllAuthSessions).not.toHaveBeenCalled();
+      expect(updateAllRefreshSessions).not.toHaveBeenCalled();
+      expect(createAuditEvent).toHaveBeenCalledWith({
+        clientId,
+        actorUserId,
+        targetUserId,
+        action: 'USER_ENABLED',
+      });
+    });
+
+    it('revokes a specific same-client session and writes an audit event', async () => {
+      findAuthSession.mockResolvedValue({
+        id: sessionId,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      });
+
+      await expect(
+        service.revokeClientUserSession(
+          actorUserId,
+          targetUserId,
+          clientId,
+          sessionId,
+        ),
+      ).resolves.toBeUndefined();
+
+      expect(whereAuthSession).toHaveBeenCalledWith({
+        id: sessionId,
+        userId: targetUserId,
+        revokedAt: null,
+      });
+      expect(updateAuthSession).toHaveBeenCalledWith({
+        revokedAt: expect.any(String),
+      });
+      expect(whereRefreshSession).toHaveBeenCalledWith({
+        sessionId,
+        revokedAt: null,
+      });
+      expect(updateAllRefreshSessions).toHaveBeenCalledWith({
+        revokedAt: expect.any(String),
+      });
+      expect(createAuditEvent).toHaveBeenCalledWith({
+        clientId,
+        actorUserId,
+        targetUserId,
+        action: 'SESSION_REVOKED',
+        sessionId,
+      });
+    });
+
+    it('does not audit or revoke a missing or expired session', async () => {
+      findAuthSession.mockResolvedValue(null);
+
+      await expect(
+        service.revokeClientUserSession(
+          actorUserId,
+          targetUserId,
+          clientId,
+          sessionId,
+        ),
+      ).rejects.toThrow(NotFoundException);
+      expect(updateAuthSession).not.toHaveBeenCalled();
+      expect(createAuditEvent).not.toHaveBeenCalled();
+
+      findAuthSession.mockResolvedValue({
+        id: sessionId,
+        expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      });
+      await expect(
+        service.revokeClientUserSession(
+          actorUserId,
+          targetUserId,
+          clientId,
+          sessionId,
+        ),
+      ).rejects.toThrow('Active session not found.');
+    });
+
+    it('does not expose an account from a different client', async () => {
+      findRefreshUser.mockResolvedValue(null);
+
+      await expect(
+        service.disableClientUser(actorUserId, targetUserId, clientId),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(updateUser).not.toHaveBeenCalled();
+      expect(createAuditEvent).not.toHaveBeenCalled();
     });
   });
 });

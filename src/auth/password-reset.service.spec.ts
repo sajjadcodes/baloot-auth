@@ -25,6 +25,7 @@ describe('PasswordResetService', () => {
   let whereUser: jest.Mock;
   let updateUser: jest.Mock;
   let updateSessions: jest.Mock;
+  let updateAuthSessions: jest.Mock;
   let verifyToken: jest.Mock;
   let signToken: jest.Mock;
   let hashPassword: jest.Mock;
@@ -36,6 +37,7 @@ describe('PasswordResetService', () => {
     findUser = jest.fn();
     updateUser = jest.fn();
     updateSessions = jest.fn().mockResolvedValue([]);
+    updateAuthSessions = jest.fn().mockResolvedValue([]);
     whereUser = jest.fn(() => ({ first: findUser, update: updateUser }));
     verifyToken = jest.fn();
     signToken = jest.fn().mockResolvedValue('signed-reset-token');
@@ -48,6 +50,9 @@ describe('PasswordResetService', () => {
           User: { where: whereUser },
           RefreshSession: {
             where: jest.fn(() => ({ updateAll: updateSessions })),
+          },
+          AuthSession: {
+            where: jest.fn(() => ({ updateAll: updateAuthSessions })),
           },
         },
       },
@@ -130,7 +135,7 @@ describe('PasswordResetService', () => {
     expect(sendEmail).not.toHaveBeenCalled();
   });
 
-  it('updates the password once and revokes all active refresh sessions', async () => {
+  it('updates the password once and revokes all active sessions', async () => {
     const fingerprint = createHmac('sha256', resetSecret)
       .update(user.passwordHash)
       .digest('hex');
@@ -163,6 +168,9 @@ describe('PasswordResetService', () => {
       passwordHash: 'argon2-new-hash',
     });
     expect(updateSessions).toHaveBeenCalledWith({
+      revokedAt: expect.any(String),
+    });
+    expect(updateAuthSessions).toHaveBeenCalledWith({
       revokedAt: expect.any(String),
     });
     expect(transact).toHaveBeenCalledTimes(1);
@@ -206,6 +214,7 @@ describe('PasswordResetService', () => {
       service.reset('valid-token', 'new secure password', clientId),
     ).rejects.toThrow(UnauthorizedException);
     expect(updateSessions).not.toHaveBeenCalled();
+    expect(updateAuthSessions).not.toHaveBeenCalled();
   });
 
   it('rejects a reset token bound to a different client', async () => {

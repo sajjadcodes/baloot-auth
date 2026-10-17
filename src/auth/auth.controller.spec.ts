@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { REFRESH_TOKEN_COOKIE } from './auth.constants.js';
 import { AuthCookiesService } from './auth-cookies.service.js';
@@ -7,6 +8,7 @@ import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { ROLES_KEY } from './decorators/roles.decorator.js';
 import { AdminClientGuard } from './guards/admin-client.guard.js';
+import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { RolesGuard } from './guards/roles.guard.js';
 import { TrustedOriginGuard } from './guards/trusted-origin.guard.js';
 
@@ -21,6 +23,9 @@ describe('AuthController', () => {
       'login',
       'refresh',
       'logout',
+      'disableAdminUser',
+      'enableAdminUser',
+      'revokeAdminUserSession',
     ] as const) {
       const guards = Reflect.getMetadata(
         GUARDS_METADATA,
@@ -59,6 +64,104 @@ describe('AuthController', () => {
     expect(guards).toContain(AdminClientGuard);
     expect(guards).toContain(RolesGuard);
     expect(requiredRoles).toEqual(['platform_admin']);
+  });
+
+  it.each([
+    'getAdminUserSessions',
+    'disableAdminUser',
+    'enableAdminUser',
+    'revokeAdminUserSession',
+  ] as const)(
+    'protects %s with the complete same-client admin guard chain',
+    (method) => {
+      const guards = Reflect.getMetadata(
+        GUARDS_METADATA,
+        AuthController.prototype[method],
+      );
+      const requiredRoles = Reflect.getMetadata(
+        ROLES_KEY,
+        AuthController.prototype[method],
+      );
+
+      expect(guards).toEqual([
+        ThrottlerGuard,
+        TrustedOriginGuard,
+        JwtAuthGuard,
+        AdminClientGuard,
+        RolesGuard,
+      ]);
+      expect(requiredRoles).toEqual(['platform_admin']);
+    },
+  );
+
+  it('lists sessions using the authenticated admin client', async () => {
+    const sessions = [
+      {
+        id: 'session-1',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        expiresAt: '2026-02-01T00:00:00.000Z',
+      },
+    ];
+    const getClientUserSessions = jest.fn().mockResolvedValue(sessions);
+    const controller = new AuthController(
+      { getClientUserSessions } as unknown as AuthService,
+      {} as AuthCookiesService,
+    );
+
+    await expect(
+      controller.getAdminUserSessions('client-1', 'target-user'),
+    ).resolves.toEqual(sessions);
+    expect(getClientUserSessions).toHaveBeenCalledWith(
+      'target-user',
+      'client-1',
+    );
+  });
+
+  it('passes the authenticated administrator to account and session mutations', async () => {
+    const disableClientUser = jest.fn().mockResolvedValue(undefined);
+    const enableClientUser = jest.fn().mockResolvedValue(undefined);
+    const revokeClientUserSession = jest.fn().mockResolvedValue(undefined);
+    const auth = {
+      disableClientUser,
+      enableClientUser,
+      revokeClientUserSession,
+    } as unknown as AuthService;
+    const controller = new AuthController(auth, {} as AuthCookiesService);
+    const request = {
+      user: {
+        userId: 'admin-user',
+        clientId: 'client-1',
+        sessionId: 'session-auth',
+      },
+    } as Request & {
+      user: { userId: string; clientId: string; sessionId: string };
+    };
+
+    await controller.disableAdminUser(request, 'client-1', 'target-user');
+    await controller.enableAdminUser(request, 'client-1', 'target-user');
+    await controller.revokeAdminUserSession(
+      request,
+      'client-1',
+      'target-user',
+      'session-1',
+    );
+
+    expect(disableClientUser).toHaveBeenCalledWith(
+      'admin-user',
+      'target-user',
+      'client-1',
+    );
+    expect(enableClientUser).toHaveBeenCalledWith(
+      'admin-user',
+      'target-user',
+      'client-1',
+    );
+    expect(revokeClientUserSession).toHaveBeenCalledWith(
+      'admin-user',
+      'target-user',
+      'client-1',
+      'session-1',
+    );
   });
 
   it('returns the requested account only for the matching client', async () => {
@@ -179,8 +282,14 @@ describe('AuthController', () => {
 
     await expect(
       controller.getCurrentUser(
-        { user: { userId: currentUser.id, clientId } } as Request & {
-          user: { userId: string; clientId: string };
+        {
+          user: {
+            userId: currentUser.id,
+            clientId,
+            sessionId: 'session-1',
+          },
+        } as Request & {
+          user: { userId: string; clientId: string; sessionId: string };
         },
         clientId,
       ),
@@ -199,8 +308,11 @@ describe('AuthController', () => {
           user: {
             userId: 'user-1',
             clientId: '00000000-0000-4000-8000-000000000001',
+            sessionId: 'session-1',
           },
-        } as Request & { user: { userId: string; clientId: string } },
+        } as Request & {
+          user: { userId: string; clientId: string; sessionId: string };
+        },
         '00000000-0000-4000-8000-000000000002',
       ),
     ).rejects.toThrow('Invalid or expired access token.');

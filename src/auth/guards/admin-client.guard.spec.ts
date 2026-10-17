@@ -7,6 +7,7 @@ import { AdminClientGuard } from './admin-client.guard.js';
 
 describe('AdminClientGuard', () => {
   const tokenClientId = '00000000-0000-4000-8000-000000000001';
+  const sessionId = '00000000-0000-4000-8000-000000000003';
   const guard = new AdminClientGuard();
 
   function contextFor(
@@ -28,9 +29,9 @@ describe('AdminClientGuard', () => {
     [AuthenticatedUser | undefined, string | undefined]
   > = [
     [undefined, tokenClientId],
-    [{ userId: 'admin-user', clientId: tokenClientId }, undefined],
+    [{ userId: 'admin-user', clientId: tokenClientId, sessionId }, undefined],
     [
-      { userId: 'admin-user', clientId: tokenClientId },
+      { userId: 'admin-user', clientId: tokenClientId, sessionId },
       '00000000-0000-4000-8000-000000000002',
     ],
   ];
@@ -39,7 +40,7 @@ describe('AdminClientGuard', () => {
     expect(
       guard.canActivate(
         contextFor(
-          { userId: 'admin-user', clientId: tokenClientId },
+          { userId: 'admin-user', clientId: tokenClientId, sessionId },
           tokenClientId,
         ),
       ),

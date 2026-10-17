@@ -14,6 +14,7 @@ import { RolesGuard } from './roles.guard.js';
 describe('RolesGuard', () => {
   const userId = 'user-1';
   const clientId = '00000000-0000-4000-8000-000000000001';
+  const sessionId = '00000000-0000-4000-8000-000000000002';
   const user = {
     id: userId,
     clientId,
@@ -69,7 +70,7 @@ describe('RolesGuard', () => {
 
   it('allows an active verified user with a required role assignment', async () => {
     await expect(
-      guard.canActivate(contextFor({ userId, clientId })),
+      guard.canActivate(contextFor({ userId, clientId, sessionId })),
     ).resolves.toBe(true);
 
     expect(includeRole).toHaveBeenCalledWith('role', expect.any(Function));
@@ -84,7 +85,7 @@ describe('RolesGuard', () => {
       .mockResolvedValueOnce({ role: { name: 'user' } });
 
     await expect(
-      guard.canActivate(contextFor({ userId, clientId })),
+      guard.canActivate(contextFor({ userId, clientId, sessionId })),
     ).resolves.toBe(true);
     expect(findAssignment).toHaveBeenCalledTimes(2);
   });
@@ -93,7 +94,7 @@ describe('RolesGuard', () => {
     findAssignment.mockResolvedValue(null);
 
     await expect(
-      guard.canActivate(contextFor({ userId, clientId })),
+      guard.canActivate(contextFor({ userId, clientId, sessionId })),
     ).rejects.toThrow(ForbiddenException);
   });
 
@@ -101,7 +102,7 @@ describe('RolesGuard', () => {
     requiredRoles = [];
 
     await expect(
-      guard.canActivate(contextFor({ userId, clientId })),
+      guard.canActivate(contextFor({ userId, clientId, sessionId })),
     ).rejects.toThrow(ForbiddenException);
     expect(includeRole).not.toHaveBeenCalled();
   });
@@ -116,7 +117,7 @@ describe('RolesGuard', () => {
       findUser.mockResolvedValue(foundUser);
 
       await expect(
-        guard.canActivate(contextFor({ userId, clientId })),
+        guard.canActivate(contextFor({ userId, clientId, sessionId })),
       ).rejects.toThrow(UnauthorizedException);
       expect(includeRole).not.toHaveBeenCalled();
     },
