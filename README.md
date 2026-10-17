@@ -123,6 +123,8 @@ pnpm db:role:revoke -- --client-id 00000000-0000-4000-8000-000000000001 --email 
 
 The command requires an exact client UUID, normalized account email, and the explicit `--confirm` flag; it removes only that user's `platform_admin` assignment for that client. If the role has already been removed, it reports that no assignment exists. The operation is transactional and does not revoke other roles or refresh sessions; role guards read assignments from the database, so the admin privilege is removed immediately. Never expose role provisioning or revocation through a public API.
 
+For environment-specific operator procedures, secret handling, safeguards, and verification steps, see [Platform Administrator Operations](docs/platform-admin-operations.md).
+
 ## JWT Access-Token Foundation
 
 The auth module issues HS256 access tokens with a configurable lifetime of 60–3600 seconds (900 seconds by default). The Passport JWT strategy extracts access tokens from the HttpOnly access cookie or, for non-browser clients, the `Authorization: Bearer` header; it verifies signature and expiration and maps valid `sub` and `clientId` claims to `request.user.userId` and `request.user.clientId`.
