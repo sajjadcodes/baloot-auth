@@ -6,6 +6,7 @@ import { AuthCookiesService } from './auth-cookies.service.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { ROLES_KEY } from './decorators/roles.decorator.js';
+import { AdminClientGuard } from './guards/admin-client.guard.js';
 import { RolesGuard } from './guards/roles.guard.js';
 import { TrustedOriginGuard } from './guards/trusted-origin.guard.js';
 
@@ -55,6 +56,7 @@ describe('AuthController', () => {
     );
 
     expect(guards).toContain(TrustedOriginGuard);
+    expect(guards).toContain(AdminClientGuard);
     expect(guards).toContain(RolesGuard);
     expect(requiredRoles).toEqual(['platform_admin']);
   });
@@ -75,38 +77,10 @@ describe('AuthController', () => {
     );
     const clientId = '00000000-0000-4000-8000-000000000001';
 
-    await expect(
-      controller.getAdminUser(
-        { user: { userId: 'admin-user', clientId } } as Request & {
-          user: { userId: string; clientId: string };
-        },
-        clientId,
-        result.id,
-      ),
-    ).resolves.toEqual(result);
-    expect(getClientUserForAdmin).toHaveBeenCalledWith(result.id, clientId);
-  });
-
-  it('rejects an admin lookup when the header client differs from the token', async () => {
-    const getClientUserForAdmin = jest.fn();
-    const controller = new AuthController(
-      { getClientUserForAdmin } as unknown as AuthService,
-      {} as AuthCookiesService,
+    await expect(controller.getAdminUser(clientId, result.id)).resolves.toEqual(
+      result,
     );
-
-    await expect(
-      controller.getAdminUser(
-        {
-          user: {
-            userId: 'admin-user',
-            clientId: '00000000-0000-4000-8000-000000000001',
-          },
-        } as Request & { user: { userId: string; clientId: string } },
-        '00000000-0000-4000-8000-000000000002',
-        'target-user',
-      ),
-    ).rejects.toThrow('Invalid or expired access token.');
-    expect(getClientUserForAdmin).not.toHaveBeenCalled();
+    expect(getClientUserForAdmin).toHaveBeenCalledWith(result.id, clientId);
   });
 
   it('requests password reset without revealing account eligibility', async () => {

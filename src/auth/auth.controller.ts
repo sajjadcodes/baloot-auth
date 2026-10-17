@@ -23,6 +23,7 @@ import { RegisterDto } from './dto/register.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { ResendVerificationDto } from './dto/resend-verification.dto.js';
 import { VerifyEmailDto } from './dto/verify-email.dto.js';
+import { AdminClientGuard } from './guards/admin-client.guard.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { RolesGuard } from './guards/roles.guard.js';
 import { TrustedOriginGuard } from './guards/trusted-origin.guard.js';
@@ -74,7 +75,13 @@ export class AuthController {
   }
 
   @Get('admin/users/:userId')
-  @UseGuards(ThrottlerGuard, TrustedOriginGuard, JwtAuthGuard, RolesGuard)
+  @UseGuards(
+    ThrottlerGuard,
+    TrustedOriginGuard,
+    JwtAuthGuard,
+    AdminClientGuard,
+    RolesGuard,
+  )
   @Roles('platform_admin')
   @ApiOperation({
     summary: 'Get a user account for administration',
@@ -92,14 +99,9 @@ export class AuthController {
     format: 'uuid',
   })
   async getAdminUser(
-    @Req() request: Request & { user: AuthenticatedUser },
     @Headers(CLIENT_ID_HEADER) clientId: string,
     @Param('userId', new ParseUUIDPipe()) userId: string,
   ): Promise<AdminUserInfo> {
-    if (request.user.clientId !== clientId) {
-      throw new UnauthorizedException('Invalid or expired access token.');
-    }
-
     return this.auth.getClientUserForAdmin(userId, clientId);
   }
 

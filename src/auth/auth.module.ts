@@ -10,6 +10,7 @@ import { AuthService } from './auth.service.js';
 import { EmailDeliveryService } from './email-delivery.service.js';
 import { EmailVerificationService } from './email-verification.service.js';
 import { PasswordResetService } from './password-reset.service.js';
+import { AdminClientGuard } from './guards/admin-client.guard.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { RolesGuard } from './guards/roles.guard.js';
 import { TrustedOriginGuard } from './guards/trusted-origin.guard.js';
@@ -41,6 +42,7 @@ import {
   controllers: [AuthController],
   providers: [
     AccessTokenService,
+    AdminClientGuard,
     AuthCookiesService,
     AuthService,
     EmailDeliveryService,
