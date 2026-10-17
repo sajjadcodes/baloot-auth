@@ -4,6 +4,14 @@
   "target": "postgres",
   "profileHash": "3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2",
   "roots": {
+    "admin_audit_events": {
+      "model": "AdminAuditEvent",
+      "namespace": "public"
+    },
+    "auth_sessions": {
+      "model": "AuthSession",
+      "namespace": "public"
+    },
     "client_allowed_origins": {
       "model": "ClientAllowedOrigin",
       "namespace": "public"
@@ -61,6 +69,242 @@
           }
         },
         "models": {
+          "AdminAuditEvent": {
+            "fields": {
+              "action": {
+                "nullable": false,
+                "type": {
+                  "codecId": "sql/varchar@1",
+                  "kind": "scalar",
+                  "typeParams": {
+                    "length": 64
+                  }
+                }
+              },
+              "actorUserId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/uuid@1",
+                  "kind": "scalar"
+                }
+              },
+              "clientId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/uuid@1",
+                  "kind": "scalar"
+                }
+              },
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/uuid@1",
+                  "kind": "scalar"
+                }
+              },
+              "sessionId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/uuid@1",
+                  "kind": "scalar"
+                }
+              },
+              "targetUserId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/uuid@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "actor": {
+                "cardinality": "N:1",
+                "nullable": false,
+                "on": {
+                  "localFields": [
+                    "actorUserId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "public"
+                }
+              },
+              "client": {
+                "cardinality": "N:1",
+                "nullable": false,
+                "on": {
+                  "localFields": [
+                    "clientId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "Client",
+                  "namespace": "public"
+                }
+              },
+              "target": {
+                "cardinality": "N:1",
+                "nullable": false,
+                "on": {
+                  "localFields": [
+                    "targetUserId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "action": {
+                  "column": "action"
+                },
+                "actorUserId": {
+                  "column": "actor_user_id"
+                },
+                "clientId": {
+                  "column": "client_id"
+                },
+                "createdAt": {
+                  "column": "created_at"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "sessionId": {
+                  "column": "session_id"
+                },
+                "targetUserId": {
+                  "column": "target_user_id"
+                }
+              },
+              "namespaceId": "public",
+              "table": "admin_audit_events"
+            }
+          },
+          "AuthSession": {
+            "fields": {
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "expiresAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/uuid@1",
+                  "kind": "scalar"
+                }
+              },
+              "revokedAt": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "updatedAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "kind": "scalar"
+                }
+              },
+              "userId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/uuid@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "refreshSessions": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "sessionId"
+                  ]
+                },
+                "to": {
+                  "model": "RefreshSession",
+                  "namespace": "public"
+                }
+              },
+              "user": {
+                "cardinality": "N:1",
+                "nullable": false,
+                "on": {
+                  "localFields": [
+                    "userId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "createdAt": {
+                  "column": "created_at"
+                },
+                "expiresAt": {
+                  "column": "expires_at"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "revokedAt": {
+                  "column": "revoked_at"
+                },
+                "updatedAt": {
+                  "column": "updated_at"
+                },
+                "userId": {
+                  "column": "user_id"
+                }
+              },
+              "namespaceId": "public",
+              "table": "auth_sessions"
+            }
+          },
           "Client": {
             "fields": {
               "createdAt": {
@@ -109,6 +353,21 @@
               }
             },
             "relations": {
+              "adminAuditEvents": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "clientId"
+                  ]
+                },
+                "to": {
+                  "model": "AdminAuditEvent",
+                  "namespace": "public"
+                }
+              },
               "allowedOrigins": {
                 "cardinality": "1:N",
                 "on": {
@@ -253,6 +512,13 @@
                   "kind": "scalar"
                 }
               },
+              "sessionId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/uuid@1",
+                  "kind": "scalar"
+                }
+              },
               "tokenHash": {
                 "nullable": false,
                 "type": {
@@ -289,6 +555,22 @@
               }
             },
             "relations": {
+              "authSession": {
+                "cardinality": "N:1",
+                "nullable": false,
+                "on": {
+                  "localFields": [
+                    "sessionId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "AuthSession",
+                  "namespace": "public"
+                }
+              },
               "user": {
                 "cardinality": "N:1",
                 "nullable": false,
@@ -319,6 +601,9 @@
                 },
                 "revokedAt": {
                   "column": "revoked_at"
+                },
+                "sessionId": {
+                  "column": "session_id"
                 },
                 "tokenHash": {
                   "column": "token_hash"
@@ -492,6 +777,51 @@
               }
             },
             "relations": {
+              "adminAuditEventsAsActor": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "actorUserId"
+                  ]
+                },
+                "to": {
+                  "model": "AdminAuditEvent",
+                  "namespace": "public"
+                }
+              },
+              "adminAuditEventsAsTarget": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "targetUserId"
+                  ]
+                },
+                "to": {
+                  "model": "AdminAuditEvent",
+                  "namespace": "public"
+                }
+              },
+              "authSessions": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "userId"
+                  ]
+                },
+                "to": {
+                  "model": "AuthSession",
+                  "namespace": "public"
+                }
+              },
               "client": {
                 "cardinality": "N:1",
                 "nullable": false,
@@ -653,6 +983,257 @@
       "public": {
         "entries": {
           "table": {
+            "admin_audit_events": {
+              "columns": {
+                "action": {
+                  "codecId": "sql/varchar@1",
+                  "dataType": "pg/varchar",
+                  "nullable": false,
+                  "typeParams": {
+                    "length": 64
+                  }
+                },
+                "actor_user_id": {
+                  "codecId": "pg/uuid@1",
+                  "dataType": "pg/uuid",
+                  "nullable": false
+                },
+                "client_id": {
+                  "codecId": "pg/uuid@1",
+                  "dataType": "pg/uuid",
+                  "nullable": false
+                },
+                "created_at": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "dataType": "pg/timestamptz",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/uuid@1",
+                  "dataType": "pg/uuid",
+                  "nullable": false
+                },
+                "session_id": {
+                  "codecId": "pg/uuid@1",
+                  "dataType": "pg/uuid",
+                  "nullable": true
+                },
+                "target_user_id": {
+                  "codecId": "pg/uuid@1",
+                  "dataType": "pg/uuid",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "index": {
+                    "name": "admin_audit_events_client_id_idx_1bb5a570"
+                  },
+                  "onDelete": "restrict",
+                  "source": {
+                    "columns": [
+                      "client_id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "admin_audit_events"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "clients"
+                  }
+                },
+                {
+                  "index": {
+                    "name": "admin_audit_events_actor_user_id_idx_c46ca325"
+                  },
+                  "onDelete": "restrict",
+                  "source": {
+                    "columns": [
+                      "actor_user_id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "admin_audit_events"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "users"
+                  }
+                },
+                {
+                  "index": {
+                    "name": "admin_audit_events_target_user_id_idx_cc615011"
+                  },
+                  "onDelete": "restrict",
+                  "source": {
+                    "columns": [
+                      "target_user_id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "admin_audit_events"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "users"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "actor_user_id"
+                  ],
+                  "name": "admin_audit_events_actor_user_id_idx_c46ca325",
+                  "prefix": "admin_audit_events_actor_user_id_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "client_id",
+                    "created_at"
+                  ],
+                  "name": "admin_audit_events_client_id_created_at_idx_379d2914",
+                  "prefix": "admin_audit_events_client_id_created_at_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "client_id"
+                  ],
+                  "name": "admin_audit_events_client_id_idx_1bb5a570",
+                  "prefix": "admin_audit_events_client_id_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "target_user_id",
+                    "created_at"
+                  ],
+                  "name": "admin_audit_events_target_user_id_created_at_idx_0b483981",
+                  "prefix": "admin_audit_events_target_user_id_created_at_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "target_user_id"
+                  ],
+                  "name": "admin_audit_events_target_user_id_idx_cc615011",
+                  "prefix": "admin_audit_events_target_user_id_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
+            "auth_sessions": {
+              "columns": {
+                "created_at": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "dataType": "pg/timestamptz",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nullable": false
+                },
+                "expires_at": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "dataType": "pg/timestamptz",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/uuid@1",
+                  "dataType": "pg/uuid",
+                  "nullable": false
+                },
+                "revoked_at": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "dataType": "pg/timestamptz",
+                  "nullable": true
+                },
+                "updated_at": {
+                  "codecId": "pg/timestamptz-string@1",
+                  "dataType": "pg/timestamptz",
+                  "nullable": false
+                },
+                "user_id": {
+                  "codecId": "pg/uuid@1",
+                  "dataType": "pg/uuid",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "index": {
+                    "name": "auth_sessions_user_id_idx_6c952402"
+                  },
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "user_id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "auth_sessions"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "users"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "expires_at"
+                  ],
+                  "name": "auth_sessions_expires_at_idx_35365ada",
+                  "prefix": "auth_sessions_expires_at_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "user_id"
+                  ],
+                  "name": "auth_sessions_user_id_idx_6c952402",
+                  "prefix": "auth_sessions_user_id_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "user_id",
+                    "revoked_at"
+                  ],
+                  "name": "auth_sessions_user_id_revoked_at_idx_4c62e965",
+                  "prefix": "auth_sessions_user_id_revoked_at_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": []
+            },
             "client_allowed_origins": {
               "columns": {
                 "client_id": {
@@ -805,6 +1386,11 @@
                   "dataType": "pg/timestamptz",
                   "nullable": true
                 },
+                "session_id": {
+                  "codecId": "pg/uuid@1",
+                  "dataType": "pg/uuid",
+                  "nullable": false
+                },
                 "token_hash": {
                   "codecId": "sql/varchar@1",
                   "dataType": "pg/varchar",
@@ -852,6 +1438,26 @@
                     "namespaceId": "public",
                     "tableName": "users"
                   }
+                },
+                {
+                  "index": {
+                    "name": "refresh_sessions_session_id_idx_00ba47bf"
+                  },
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "session_id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "refresh_sessions"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "auth_sessions"
+                  }
                 }
               ],
               "indexes": [
@@ -861,6 +1467,23 @@
                   ],
                   "name": "refresh_sessions_expires_at_idx_35365ada",
                   "prefix": "refresh_sessions_expires_at_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "session_id"
+                  ],
+                  "name": "refresh_sessions_session_id_idx_00ba47bf",
+                  "prefix": "refresh_sessions_session_id_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "session_id",
+                    "revoked_at"
+                  ],
+                  "name": "refresh_sessions_session_id_revoked_at_idx_6413f9af",
+                  "prefix": "refresh_sessions_session_id_revoked_at_idx",
                   "unique": false
                 },
                 {
@@ -1175,12 +1798,49 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "a3180f53a847b46b7d441ce76d4baa0f30621e202f30904d1f58b06e1e4b2e67"
+    "storageHash": "8604162ec14ac5dd0d8105d54dc96d50454765b4e745a1bec093cfff8d5c171f"
   },
   "execution": {
-    "executionHash": "eda2ae42dd13c3598d9dc2b429e502fa77220dc3bf4aa554320333100cdd58e3",
+    "executionHash": "cc19f8285840da2107e7356461ad4fa8021a2932a3b0eb1a79694c8f7f2a437c",
     "mutations": {
       "defaults": [
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "entry": "admin_audit_events",
+            "field": "id",
+            "namespace": "public"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "uuidv4",
+            "kind": "generator"
+          },
+          "ref": {
+            "entry": "auth_sessions",
+            "field": "id",
+            "namespace": "public"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "timestampNow",
+            "kind": "generator"
+          },
+          "onUpdate": {
+            "id": "timestampNow",
+            "kind": "generator"
+          },
+          "ref": {
+            "entry": "auth_sessions",
+            "field": "updated_at",
+            "namespace": "public"
+          }
+        },
         {
           "onCreate": {
             "id": "uuidv4",

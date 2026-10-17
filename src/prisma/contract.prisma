@@ -10,13 +10,14 @@ enum ClientStatus {
 }
 
 model Client {
-  id             Uuid                       @id @default(uuid())
-  name           VarChar(128)
-  status         ClientStatus               @default(ACTIVE)
-  createdAt      TimestamptzString          @default(now()) @map("created_at")
-  updatedAt      temporal.updatedAtString() @map("updated_at")
-  allowedOrigins ClientAllowedOrigin[]
-  users          User[]
+  id               Uuid                       @id @default(uuid())
+  name             VarChar(128)
+  status           ClientStatus               @default(ACTIVE)
+  createdAt        TimestamptzString          @default(now()) @map("created_at")
+  updatedAt        temporal.updatedAtString() @map("updated_at")
+  allowedOrigins   ClientAllowedOrigin[]
+  users            User[]
+  adminAuditEvents AdminAuditEvent[]
 
   @@map("clients")
 }
@@ -32,17 +33,20 @@ model ClientAllowedOrigin {
 }
 
 model User {
-  id              Uuid                       @id @default(uuid())
-  clientId        Uuid                       @map("client_id")
-  email           VarChar(320)
-  passwordHash    VarChar(255)               @map("password_hash")
-  emailVerifiedAt TimestamptzString?         @map("email_verified_at")
-  status          UserStatus                 @default(ACTIVE)
-  createdAt       TimestamptzString          @default(now()) @map("created_at")
-  updatedAt       temporal.updatedAtString() @map("updated_at")
-  client          Client                     @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  roles           UserRole[]
-  refreshSessions RefreshSession[]
+  id                       Uuid                       @id @default(uuid())
+  clientId                 Uuid                       @map("client_id")
+  email                    VarChar(320)
+  passwordHash             VarChar(255)               @map("password_hash")
+  emailVerifiedAt          TimestamptzString?         @map("email_verified_at")
+  status                   UserStatus                 @default(ACTIVE)
+  createdAt                TimestamptzString          @default(now()) @map("created_at")
+  updatedAt                temporal.updatedAtString() @map("updated_at")
+  client                   Client                     @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  roles                    UserRole[]
+  refreshSessions          RefreshSession[]
+  authSessions             AuthSession[]
+  adminAuditEventsAsActor  AdminAuditEvent[]          @relation("AdminAuditActor")
+  adminAuditEventsAsTarget AdminAuditEvent[]          @relation("AdminAuditTarget")
 
   @@unique([clientId, email])
   @@map("users")
@@ -72,17 +76,52 @@ model UserRole {
 }
 
 model RefreshSession {
-  id        Uuid                       @id @default(uuid())
-  userId    Uuid                       @map("user_id")
-  tokenHash VarChar(128)               @unique @map("token_hash")
-  expiresAt TimestamptzString          @map("expires_at")
-  revokedAt TimestamptzString?         @map("revoked_at")
-  userAgent VarChar(512)?              @map("user_agent")
-  createdAt TimestamptzString          @default(now()) @map("created_at")
-  updatedAt temporal.updatedAtString() @map("updated_at")
-  user      User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          Uuid                       @id @default(uuid())
+  userId      Uuid                       @map("user_id")
+  sessionId   Uuid                       @map("session_id")
+  tokenHash   VarChar(128)               @unique @map("token_hash")
+  expiresAt   TimestamptzString          @map("expires_at")
+  revokedAt   TimestamptzString?         @map("revoked_at")
+  userAgent   VarChar(512)?              @map("user_agent")
+  createdAt   TimestamptzString          @default(now()) @map("created_at")
+  updatedAt   temporal.updatedAtString() @map("updated_at")
+  user        User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  authSession AuthSession                @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([sessionId, revokedAt])
+  @@index([expiresAt])
+  @@map("refresh_sessions")
+}
+
+model AuthSession {
+  id              Uuid                       @id @default(uuid())
+  userId          Uuid                       @map("user_id")
+  expiresAt       TimestamptzString          @map("expires_at")
+  revokedAt       TimestamptzString?         @map("revoked_at")
+  createdAt       TimestamptzString          @default(now()) @map("created_at")
+  updatedAt       temporal.updatedAtString() @map("updated_at")
+  user            User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshSessions RefreshSession[]
 
   @@index([userId, revokedAt])
   @@index([expiresAt])
-  @@map("refresh_sessions")
+  @@map("auth_sessions")
+}
+
+model AdminAuditEvent {
+  id           Uuid              @id @default(uuid())
+  clientId     Uuid              @map("client_id")
+  actorUserId  Uuid              @map("actor_user_id")
+  targetUserId Uuid              @map("target_user_id")
+  action       VarChar(64)
+  sessionId    Uuid?             @map("session_id")
+  createdAt    TimestamptzString @default(now()) @map("created_at")
+  client       Client            @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  actor        User              @relation("AdminAuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  target       User              @relation("AdminAuditTarget", fields: [targetUserId], references: [id], onDelete: Restrict)
+
+  @@index([clientId, createdAt])
+  @@index([targetUserId, createdAt])
+  @@map("admin_audit_events")
 }
