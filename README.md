@@ -25,8 +25,8 @@ pnpm install
 
 Copy `.env.example` to an untracked `.env` and configure the local database,
 secrets, email provider, allowed origins, and seed clients. The database schema
-must be provisioned through the maintainer-approved migration process before
-seeding or starting the service.
+must be provisioned through the reviewed migration process for your
+environment before seeding or starting the service.
 
 ```bash
 pnpm db:seed
@@ -52,5 +52,5 @@ making contract or database changes.
 
 - Security-first, client-scoped authentication.
 - Small, reviewable changes with appropriate tests.
-- Explicit approval for database migration operations.
+- Reviewed database migrations and environment-appropriate change control.
 - Clear API and operator documentation.

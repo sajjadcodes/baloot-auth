@@ -49,8 +49,8 @@ git diff --check
 
 ## Manual smoke test after migration
 
-After the maintainer confirms the database migration has been applied and
-client seed data is configured, start the service and use Swagger at
+After the required database migration has been applied and client seed data
+is configured, start the service and use Swagger at
 `http://localhost:3000/api/docs` or an approved test client. Never use
 production credentials or real user accounts for local testing.
 

@@ -18,18 +18,20 @@ the reviewed migration artifacts.
 
 ## Migration control
 
-Database migrations are controlled by the project maintainer. Do not create,
-plan, apply, run, reset, or deploy a migration without explicit maintainer
-approval. Do not bypass this requirement with another tool or script.
+Treat database migrations as reviewed, data-changing operations. Follow the
+approval and release process for the target environment; do not bypass it
+with another tool or script. Never reset or apply an unreviewed migration to
+a database containing data.
 
 The normal workflow is:
 
 1. Update the contract and explain the schema impact.
 2. Propose a Prisma ORM 8 migration planning command and describe its effect.
-3. Wait for explicit approval before creating or executing the migration.
+3. Obtain approval from the authorized maintainers before creating or
+   executing the migration.
 4. Review the migration operations and any data transformation.
 5. Test against an appropriate non-production database before deployment.
-6. Apply through the maintainer-approved process.
+6. Apply through the environment's approved release process.
 
 For account/session administration, see
 [the rollout notes](./account-session-administration.md). In particular, the

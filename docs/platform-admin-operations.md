@@ -2,8 +2,8 @@
 
 This guide describes how to grant and revoke the global `platform_admin` role
 using trusted operator commands. These operations change database role
-assignments, so run them only against the intended environment and with
-maintainer approval.
+assignments, so run them only against the intended environment through its
+approved operator and change-control process.
 
 ## Security Rules
 
@@ -28,7 +28,7 @@ The service does not create or apply migrations as part of these procedures.
 
 ## Environment Preparation
 
-For each environment, load its values from that environment's own protected
+For each environment, load its values from that environment's protected
 configuration:
 
 | Environment       | Configuration source                                                  | Database target                 |
@@ -39,10 +39,10 @@ configuration:
 
 The commands use `DATABASE_URL`. The grant command also requires the complete,
 reviewed `SEED_CLIENTS_JSON` and matching `CORS_ORIGINS` values because it runs
-the existing client seed. For production, use an approved one-off operator
-process with the deployed, reviewed application version and least-privilege
-database credentials. Do not download production secrets to a developer
-workstation.
+the existing client seed. For shared or production environments, use an
+approved one-off operator process with the reviewed application version and
+least-privilege database credentials. Do not copy production secrets to an
+untrusted workstation.
 
 ### Local Development
 
