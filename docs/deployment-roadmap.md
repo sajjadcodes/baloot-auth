@@ -41,21 +41,21 @@ passwords, tokens, or secret values in this document.
   owner confirmed `https://auth.balootix.com/` works. The HTTP-01 challenge
   failed because port 80 was unreachable; do not open port 80 as a workaround.
 - The application and Caddy configuration were changed manually on EC2.
-  The EC2 checkout was previously observed at commit `6823ebd`; the local
-  source changes are not yet known to be committed or deployed from a
-  reproducible release.
+  The production loopback binding and corrected `start:prod` output path are
+  committed locally in `fb47e8a`, but deployment of that commit to EC2 has
+  not been confirmed. Reconcile the manual host changes with the committed
+  source through a reviewed release.
 
 ## Important outstanding security and operations work
 
-1. **Rotate the exposed database credential.** The old `baloot_auth_app`
-   credential was visible in a chat/IDE selection. Rotation was recommended,
-   but completion and propagation to both the EC2 environment file and local
-   `.env` have not been verified. Treat the old value as compromised. Do not
-   paste it into Git, chat, or terminal command arguments.
-2. **Make deployment reproducible.** Commit the production loopback binding
-   and corrected `start:prod` output path, then deploy the reviewed commit to
-   EC2 rather than relying on manual source edits. Preserve the working
-   systemd configuration and environment file.
+1. **Credential rotation reported complete.** The owner reports rotating the
+   exposed `baloot_auth_app` password. Do not record or request its value.
+   Confirm the protected EC2 runtime configuration uses the new password and
+   the service can still connect; update the local `.env` only if it is still
+   needed.
+2. **Make deployment reproducible.** Deploy committed change `fb47e8a` to EC2
+   through a reviewed release instead of relying on manual source edits.
+   Preserve the working systemd configuration and protected environment file.
 3. **Review runtime least privilege.** The observed app grants include
    `SELECT`, `INSERT`, and `UPDATE` on existing tables. Review application
    operations and future migration behavior; do not give the app login
@@ -101,9 +101,9 @@ passwords, tokens, or secret values in this document.
 - [x] Safaretail client, allowed origin, and built-in roles verified.
 - [x] Production service and loopback-only listener verified.
 - [x] Public HTTPS endpoint and certificate verified by the owner.
-- [ ] Exposed old app database credential rotated and all authorized
-      configurations updated.
-- [ ] Source-controlled changes deployed to EC2 from a reproducible release.
+- [x] Owner reports the exposed app database credential has been rotated;
+      successful post-rotation service connectivity should be confirmed.
+- [ ] Commit `fb47e8a` deployed to EC2 from a reproducible release.
 - [ ] Dedicated non-login service account and boot/renewal behavior reviewed.
 - [ ] Synthetic end-to-end auth and email flows tested.
 - [ ] EC2 public IP stability and shared Baloot Pay impact documented.
