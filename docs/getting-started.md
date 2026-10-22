@@ -65,9 +65,10 @@ not in Git. See [Security](./security.md) and
 
 ## Initialize local application data
 
-The database schema must already be provisioned by the maintainer-approved
-migration process. The seed command provisions configured client/origin rows
-and built-in roles; it does not create the database schema.
+The database schema must already be provisioned through the reviewed migration
+process for the target environment. The seed command
+provisions configured client/origin rows and built-in roles; it does not
+create the database schema.
 
 ```bash
 pnpm db:seed

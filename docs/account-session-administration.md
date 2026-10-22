@@ -31,15 +31,13 @@ revocation, and account disablement immediately effective for authenticated
 requests. Refresh-token rotation retains the same session ID while replacing
 the hashed refresh token.
 
-## Schema Rollout Required
+## Schema rollout
 
 The source contract in `src/prisma/contract.prisma` defines `auth_sessions`,
 the `refresh_sessions.session_id` relationship, and `admin_audit_events`.
-The contract artifacts and migration have been committed. The owner reports
-that the migration has been applied to the production Auth database and the
-application has started successfully against it. Verify migration history
-with the maintainer before any future schema change; see the
-[AWS deployment roadmap](./deployment-roadmap.md).
+Apply the corresponding migration before deploying an application version
+that depends on these objects. Check the target environment's migration
+history before applying it or planning a further schema change.
 
 The generated migration adds `refresh_sessions.session_id` as a required
 column and checks that `refresh_sessions` is empty before applying it. This
@@ -49,15 +47,15 @@ a session ID and will be rejected after the new strategy is deployed. Since
 the table is empty at migration time, affected users must authenticate again
 to create a new session.
 
-Before applying the migration to any other target environment, verify that
-`refresh_sessions` is empty and review the committed migration:
+Before applying the migration to a target environment, verify that
+`refresh_sessions` is empty and review the migration:
 
 ```bash
 pnpm prisma migration show migrations/app/20261017T0058_admin_account_session_management
 ```
 
 Apply it with `pnpm prisma db migrate --db $DATABASE_URL --advance-ref db`
-under the maintainer's migration process. Re-emit the contract with
+through the approved process for that environment. Re-emit the contract with
 `pnpm contract:emit` after any further contract changes. Plan the schema and
-application rollout together; do not deploy the new application while the
-database lacks these objects.
+application rollout together; do not deploy an application version that
+depends on objects missing from the database.
