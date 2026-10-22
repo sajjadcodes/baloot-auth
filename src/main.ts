@@ -36,7 +36,9 @@ async function bootstrap() {
     swaggerOptions: { withCredentials: true },
   });
 
-  await app.listen(config.getOrThrow<number>('PORT'));
+  const host =
+    config.get<string>('NODE_ENV') === 'production' ? '127.0.0.1' : '0.0.0.0';
+  await app.listen(config.getOrThrow<number>('PORT'), host);
 }
 
 void bootstrap();

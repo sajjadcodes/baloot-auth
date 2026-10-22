@@ -35,8 +35,11 @@ the hashed refresh token.
 
 The source contract in `src/prisma/contract.prisma` defines `auth_sessions`,
 the `refresh_sessions.session_id` relationship, and `admin_audit_events`.
-The contract artifacts and migration have been committed, and the maintainer
-has confirmed the migration was applied.
+The contract artifacts and migration have been committed. The owner reports
+that the migration has been applied to the production Auth database and the
+application has started successfully against it. Verify migration history
+with the maintainer before any future schema change; see the
+[AWS deployment roadmap](./deployment-roadmap.md).
 
 The generated migration adds `refresh_sessions.session_id` as a required
 column and checks that `refresh_sessions` is empty before applying it. This

@@ -7,6 +7,7 @@ Each guide covers one area of Baloot Auth:
 - [Security](./security.md) — request-origin protection, token handling, roles, and admin authorization.
 - [Database and migrations](./database.md) — Prisma ORM 8 contract workflow and database rollout notes.
 - [Testing](./testing.md) — unit tests, build and lint checks, plus a post-migration smoke-test checklist.
+- [AWS deployment roadmap](./deployment-roadmap.md) — approval-gated steps from the confirmed Auth DNS record through private RDS connectivity.
 - [Platform administrator operations](./platform-admin-operations.md) — securely grant or revoke `platform_admin`.
 - [Account and session administration](./account-session-administration.md) — admin account/session endpoints, audit behavior, and migration notes.
 
