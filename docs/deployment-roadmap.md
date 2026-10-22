@@ -40,22 +40,21 @@ passwords, tokens, or secret values in this document.
   Caddy obtained a Let's Encrypt certificate with TLS-ALPN validation; the
   owner confirmed `https://auth.balootix.com/` works. The HTTP-01 challenge
   failed because port 80 was unreachable; do not open port 80 as a workaround.
-- The application and Caddy configuration were changed manually on EC2.
-  The production loopback binding and corrected `start:prod` output path are
-  committed locally in `fb47e8a`, but deployment of that commit to EC2 has
-  not been confirmed. Reconcile the manual host changes with the committed
-  source through a reviewed release.
+- EC2 was fast-forwarded to `7302f39`, and the production build succeeded.
+  After restart, the owner verified the service listening on
+  `127.0.0.1:3000` and both local HTTP and public HTTPS returning HTTP 200.
+  The `start:prod` script points to `dist/src/main.js`.
 
 ## Important outstanding security and operations work
 
-1. **Credential rotation reported complete.** The owner reports rotating the
-   exposed `baloot_auth_app` password. Do not record or request its value.
-   Confirm the protected EC2 runtime configuration uses the new password and
-   the service can still connect; update the local `.env` only if it is still
-   needed.
-2. **Make deployment reproducible.** Deploy committed change `fb47e8a` to EC2
-   through a reviewed release instead of relying on manual source edits.
-   Preserve the working systemd configuration and protected environment file.
+1. **Credential rotation verified operationally.** The owner reports rotating
+   the exposed `baloot_auth_app` password and confirmed that the service and
+   public HTTPS request still work afterward. Do not record or request the
+   password value.
+2. **Keep deployment reproducible.** The owner verified EC2 running the
+   committed release and the app responding after restart. For future
+   deployments, use a reviewed release and preserve the working systemd
+   configuration and protected environment file.
 3. **Review runtime least privilege.** The observed app grants include
    `SELECT`, `INSERT`, and `UPDATE` on existing tables. Review application
    operations and future migration behavior; do not give the app login
@@ -102,8 +101,6 @@ passwords, tokens, or secret values in this document.
 - [x] Production service and loopback-only listener verified.
 - [x] Public HTTPS endpoint and certificate verified by the owner.
 - [x] Owner reports the exposed app database credential has been rotated;
-      successful post-rotation service connectivity should be confirmed.
-- [ ] Commit `fb47e8a` deployed to EC2 from a reproducible release.
-- [ ] Dedicated non-login service account and boot/renewal behavior reviewed.
-- [ ] Synthetic end-to-end auth and email flows tested.
-- [ ] EC2 public IP stability and shared Baloot Pay impact documented.
+      service and public HTTPS connectivity were confirmed afterward.
+- [x] Committed release deployed to EC2; local and public HTTP checks return
+      HTTP 200.
