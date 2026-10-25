@@ -36,13 +36,14 @@ describe('AuthService', () => {
   let updateAuthSession: jest.Mock;
   let updateAllAuthSessions: jest.Mock;
   let createAuditEvent: jest.Mock;
+  let createUserRole: jest.Mock;
   let createRefreshSession: jest.Mock;
   let transaction: {
     orm: {
       public: {
         Role: { where: jest.Mock };
         User: { create: jest.Mock; where: jest.Mock };
-        UserRole: { create: jest.Mock };
+        UserRole: { create: jest.Mock; where: jest.Mock };
         AuthSession: {
           create: jest.Mock;
           where: jest.Mock;
@@ -66,11 +67,43 @@ describe('AuthService', () => {
         userId: string;
         sessionId: string;
         tokenHash: string;
-        expiresAt: string;
+        expiresAt: Date;
       }
     | undefined;
   let authSessionData:
-    { id: string; userId: string; expiresAt: string } | undefined;
+    { id: string; userId: string; expiresAt: Date } | undefined;
+  const toDelegate = (legacy: {
+    where: (filter: Record<string, unknown>) => {
+      first?: () => Promise<unknown>;
+      all?: () => Promise<unknown>;
+      update?: (data: Record<string, unknown>) => Promise<unknown>;
+      updateAll?: (data: Record<string, unknown>) => Promise<unknown>;
+    };
+    create?: (data: Record<string, unknown>) => Promise<unknown>;
+  }) => ({
+    findFirst: ({ where }: { where: Record<string, unknown> }) =>
+      legacy.where(where).first?.(),
+    findMany: ({ where }: { where: Record<string, unknown> }) =>
+      legacy.where(where).all?.(),
+    create: ({ data }: { data: Record<string, unknown> }) =>
+      legacy.create?.(data),
+    async updateMany({
+      where,
+      data,
+    }: {
+      where: Record<string, unknown>;
+      data: Record<string, unknown>;
+    }) {
+      const query = legacy.where(where);
+      const result = await (('id' in where || 'tokenHash' in where) &&
+      query.update
+        ? query.update(data)
+        : (query.updateAll?.(data) ?? query.update?.(data)));
+      return {
+        count: Array.isArray(result) ? result.length : result == null ? 0 : 1,
+      };
+    },
+  });
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -87,7 +120,7 @@ describe('AuthService', () => {
           userId: string;
           sessionId: string;
           tokenHash: string;
-          expiresAt: string;
+          expiresAt: Date;
         }) => {
           refreshSessionData = input;
           return Promise.resolve({});
@@ -116,6 +149,11 @@ describe('AuthService', () => {
         ? { first: findRefreshUser, update: updateUser }
         : { first: findUser, update: updateUser },
     );
+    const whereUserRole = jest.fn((filter: Record<string, unknown>) => ({
+      first: jest.fn(() => findRoleAssignment(filter)),
+    }));
+    const whereAuditEvent = jest.fn(() => ({ first: jest.fn() }));
+    createUserRole = jest.fn().mockResolvedValue({});
     findRefreshSession = jest.fn();
     updateRefreshSession = jest.fn();
     updateAllRefreshSessions = jest.fn().mockResolvedValue([]);
@@ -132,7 +170,7 @@ describe('AuthService', () => {
     createAuthSession = jest
       .fn()
       .mockImplementation(
-        (input: { id: string; userId: string; expiresAt: string }) => {
+        (input: { id: string; userId: string; expiresAt: Date }) => {
           authSessionData = input;
           return Promise.resolve({});
         },
@@ -148,7 +186,7 @@ describe('AuthService', () => {
         public: {
           Role: { where: findRole },
           User: { create: createUser, where: whereUser },
-          UserRole: { create: jest.fn().mockResolvedValue({}) },
+          UserRole: { create: createUserRole, where: whereUserRole },
           AuthSession: {
             create: createAuthSession,
             where: whereAuthSession,
@@ -161,9 +199,29 @@ describe('AuthService', () => {
         },
       },
     };
+    const prismaTransaction = {
+      role: toDelegate({ where: findRole }),
+      user: toDelegate({ where: whereUser, create: createUser }),
+      userRole: toDelegate({
+        where: whereUserRole,
+        create: createUserRole,
+      }),
+      authSession: toDelegate({
+        where: whereAuthSession,
+        create: createAuthSession,
+      }),
+      adminAuditEvent: toDelegate({
+        where: whereAuditEvent,
+        create: createAuditEvent,
+      }),
+      refreshSession: toDelegate({
+        where: whereRefreshSession,
+        create: createRefreshSession,
+      }),
+    };
     transact = jest.fn(
-      (callback: (tx: typeof transaction) => Promise<unknown>) =>
-        callback(transaction),
+      (callback: (tx: typeof prismaTransaction) => Promise<unknown>) =>
+        callback(prismaTransaction),
     );
     hashPassword = jest.fn().mockResolvedValue('argon2-hash');
     verifyPassword = jest.fn().mockResolvedValue(true);
@@ -173,22 +231,24 @@ describe('AuthService', () => {
 
     service = new AuthService(
       {
-        client: { transaction: transact },
-        public: {
-          User: {
-            where: whereUser,
-          },
-          UserRole: { include: includeRoleAssignment },
-          AuthSession: {
-            create: createAuthSession,
-            where: whereAuthSession,
-          },
-          AdminAuditEvent: { create: createAuditEvent },
-          RefreshSession: {
-            create: createRefreshSession,
-            where: whereRefreshSession,
+        $transaction: transact,
+        user: toDelegate({ where: whereUser }),
+        userRole: {
+          ...toDelegate({ where: whereUserRole }),
+          findFirst: ({ where }: { where: Record<string, unknown> }) => {
+            const relation = where.role as
+              { is?: { name?: string } } | undefined;
+            const included = includeRoleAssignment(
+              'role',
+              (query: { where: jest.Mock }) =>
+                query.where({ name: relation?.is?.name }),
+            );
+            return included.where({ userId: where.userId }).first();
           },
         },
+        authSession: toDelegate({ where: whereAuthSession }),
+        refreshSession: toDelegate({ where: whereRefreshSession }),
+        adminAuditEvent: toDelegate({ where: whereAuditEvent }),
       } as unknown as PrismaService,
       {
         hash: hashPassword,
@@ -242,7 +302,7 @@ describe('AuthService', () => {
   it('returns a generic conflict for duplicate registration', async () => {
     transact.mockRejectedValue(
       Object.assign(new Error('Unique constraint failed'), {
-        code: '23505',
+        code: 'P2002',
       }),
     );
 
@@ -270,7 +330,7 @@ describe('AuthService', () => {
       passwordHash: 'argon2-hash',
       status: 'ACTIVE',
       clientId,
-      emailVerifiedAt: new Date().toISOString(),
+      emailVerifiedAt: new Date(),
     });
     const before = Date.now();
 
@@ -295,7 +355,7 @@ describe('AuthService', () => {
     expect(refreshSessionData?.sessionId).toBe(authSessionData?.id);
     expect(refreshSessionData?.tokenHash).toMatch(/^[a-f0-9]{64}$/);
     expect(refreshSessionData?.tokenHash).not.toBe(result.refreshToken);
-    expect(Date.parse(refreshSessionData!.expiresAt)).toBeGreaterThanOrEqual(
+    expect(refreshSessionData!.expiresAt.getTime()).toBeGreaterThanOrEqual(
       before + 2592000000,
     );
     expect(issueAccessToken).toHaveBeenCalledWith(
@@ -325,7 +385,7 @@ describe('AuthService', () => {
       passwordHash: 'argon2-hash',
       status: 'ACTIVE',
       clientId,
-      emailVerifiedAt: new Date().toISOString(),
+      emailVerifiedAt: new Date(),
     });
     verifyPassword.mockResolvedValue(false);
 
@@ -343,7 +403,7 @@ describe('AuthService', () => {
       passwordHash: 'argon2-hash',
       status: 'DISABLED',
       clientId,
-      emailVerifiedAt: new Date().toISOString(),
+      emailVerifiedAt: new Date(),
     });
     verifyPassword.mockResolvedValue(true);
 
@@ -379,7 +439,7 @@ describe('AuthService', () => {
         status: 'ACTIVE',
         clientId,
         passwordHash: 'must-not-be-returned',
-        emailVerifiedAt: new Date().toISOString(),
+        emailVerifiedAt: new Date(),
       });
 
       await expect(service.getCurrentUser(user.id, clientId)).resolves.toEqual(
@@ -410,8 +470,8 @@ describe('AuthService', () => {
         ...user,
         clientId,
         status: 'ACTIVE',
-        emailVerifiedAt: '2026-01-01T00:00:00.000Z',
-        createdAt: '2025-12-01T00:00:00.000Z',
+        emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'),
+        createdAt: new Date('2025-12-01T00:00:00.000Z'),
         passwordHash: 'must-not-be-returned',
       });
       findRoleAssignment.mockImplementation((name: string) =>
@@ -455,7 +515,7 @@ describe('AuthService', () => {
       verifyEmailToken.mockResolvedValue(claims);
       updateUser.mockResolvedValue({
         ...user,
-        emailVerifiedAt: new Date().toISOString(),
+        emailVerifiedAt: new Date(),
       });
     });
 
@@ -475,7 +535,7 @@ describe('AuthService', () => {
         emailVerifiedAt: null,
       });
       expect(updateUser).toHaveBeenCalledWith({
-        emailVerifiedAt: expect.any(String),
+        emailVerifiedAt: expect.any(Date),
       });
     });
 
@@ -527,7 +587,7 @@ describe('AuthService', () => {
         ...user,
         clientId,
         status: 'ACTIVE',
-        emailVerifiedAt: new Date().toISOString(),
+        emailVerifiedAt: new Date(),
       });
       await expect(
         service.resendVerificationEmail(user.email, clientId),
@@ -544,7 +604,7 @@ describe('AuthService', () => {
       sessionId: 'auth-session-1',
       userId: user.id,
       tokenHash: 'stored-token-hash',
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      expiresAt: new Date(Date.now() + 60_000),
       revokedAt: null as string | null,
     };
 
@@ -556,7 +616,7 @@ describe('AuthService', () => {
         ...user,
         status: 'ACTIVE',
         clientId,
-        emailVerifiedAt: new Date().toISOString(),
+        emailVerifiedAt: new Date(),
       });
     });
 
@@ -578,10 +638,10 @@ describe('AuthService', () => {
         revokedAt: null,
       });
       expect(updateAuthSession).toHaveBeenCalledWith({
-        revokedAt: expect.any(String),
+        revokedAt: expect.any(Date),
       });
       expect(updateAllRefreshSessions).toHaveBeenCalledWith({
-        revokedAt: expect.any(String),
+        revokedAt: expect.any(Date),
       });
     });
 
@@ -612,16 +672,16 @@ describe('AuthService', () => {
     it('revokes the session family when logout presents an older rotated token', async () => {
       findRefreshSession.mockResolvedValue({
         ...refreshSession,
-        revokedAt: new Date().toISOString(),
+        revokedAt: new Date(),
       });
 
       await service.logout(existingToken, clientId);
 
       expect(updateAuthSession).toHaveBeenCalledWith({
-        revokedAt: expect.any(String),
+        revokedAt: expect.any(Date),
       });
       expect(updateAllRefreshSessions).toHaveBeenCalledWith({
-        revokedAt: expect.any(String),
+        revokedAt: expect.any(Date),
       });
     });
   });
@@ -633,7 +693,7 @@ describe('AuthService', () => {
       sessionId: 'auth-session-1',
       userId: user.id,
       tokenHash: 'stored-token-hash',
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      expiresAt: new Date(Date.now() + 60_000),
       revokedAt: null as string | null,
     };
 
@@ -641,7 +701,7 @@ describe('AuthService', () => {
       findRefreshSession.mockResolvedValue(refreshSession);
       findAuthSession.mockResolvedValue({
         id: refreshSession.sessionId,
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        expiresAt: new Date(Date.now() + 60_000),
       });
       updateRefreshSession.mockImplementation((data: { revokedAt: string }) =>
         Promise.resolve({ ...refreshSession, ...data }),
@@ -651,7 +711,7 @@ describe('AuthService', () => {
         ...user,
         status: 'ACTIVE',
         clientId,
-        emailVerifiedAt: new Date().toISOString(),
+        emailVerifiedAt: new Date(),
       });
     });
 
@@ -699,7 +759,7 @@ describe('AuthService', () => {
     it('rejects expired sessions without rotating them', async () => {
       findRefreshSession.mockResolvedValue({
         ...refreshSession,
-        expiresAt: new Date(Date.now() - 1000).toISOString(),
+        expiresAt: new Date(Date.now() - 1000),
       });
 
       await expect(service.refresh(existingToken, clientId)).rejects.toThrow(
@@ -721,7 +781,7 @@ describe('AuthService', () => {
         'Invalid or expired refresh token.',
       );
       expect(updateAllRefreshSessions).toHaveBeenCalledWith({
-        revokedAt: expect.any(String),
+        revokedAt: expect.any(Date),
       });
       expect(refreshSessionData).toBeUndefined();
     });
@@ -729,7 +789,7 @@ describe('AuthService', () => {
     it('revokes all active sessions when a revoked token is reused', async () => {
       findRefreshSession.mockResolvedValue({
         ...refreshSession,
-        revokedAt: new Date().toISOString(),
+        revokedAt: new Date(),
       });
 
       await expect(service.refresh(existingToken, clientId)).rejects.toThrow(
@@ -741,7 +801,7 @@ describe('AuthService', () => {
         revokedAt: null,
       });
       expect(updateAllAuthSessions).toHaveBeenCalledWith({
-        revokedAt: expect.any(String),
+        revokedAt: expect.any(Date),
       });
       expect(refreshSessionData).toBeUndefined();
     });
@@ -771,10 +831,10 @@ describe('AuthService', () => {
         'Invalid or expired refresh token.',
       );
       expect(updateAllRefreshSessions).toHaveBeenCalledWith({
-        revokedAt: expect.any(String),
+        revokedAt: expect.any(Date),
       });
       expect(updateAuthSession).toHaveBeenCalledWith({
-        revokedAt: expect.any(String),
+        revokedAt: expect.any(Date),
       });
       expect(refreshSessionData).toBeUndefined();
     });
@@ -802,7 +862,7 @@ describe('AuthService', () => {
         id: targetUserId,
         clientId,
         status: 'ACTIVE',
-        emailVerifiedAt: new Date().toISOString(),
+        emailVerifiedAt: new Date(),
       });
     });
 
@@ -810,13 +870,13 @@ describe('AuthService', () => {
       findAllAuthSessions.mockResolvedValue([
         {
           id: sessionId,
-          createdAt: '2026-01-01T00:00:00.000Z',
-          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          expiresAt: new Date(Date.now() + 60_000),
         },
         {
           id: 'expired-session',
-          createdAt: '2025-01-01T00:00:00.000Z',
-          expiresAt: new Date(Date.now() - 60_000).toISOString(),
+          createdAt: new Date('2025-01-01T00:00:00.000Z'),
+          expiresAt: new Date(Date.now() - 60_000),
         },
       ]);
 
@@ -846,10 +906,10 @@ describe('AuthService', () => {
 
       expect(updateUser).toHaveBeenCalledWith({ status: 'DISABLED' });
       expect(updateAllAuthSessions).toHaveBeenCalledWith({
-        revokedAt: expect.any(String),
+        revokedAt: expect.any(Date),
       });
       expect(updateAllRefreshSessions).toHaveBeenCalledWith({
-        revokedAt: expect.any(String),
+        revokedAt: expect.any(Date),
       });
       expect(createAuditEvent).toHaveBeenCalledWith({
         clientId,
@@ -887,7 +947,7 @@ describe('AuthService', () => {
     it('revokes a specific same-client session and writes an audit event', async () => {
       findAuthSession.mockResolvedValue({
         id: sessionId,
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        expiresAt: new Date(Date.now() + 60_000),
       });
 
       await expect(
@@ -905,14 +965,14 @@ describe('AuthService', () => {
         revokedAt: null,
       });
       expect(updateAuthSession).toHaveBeenCalledWith({
-        revokedAt: expect.any(String),
+        revokedAt: expect.any(Date),
       });
       expect(whereRefreshSession).toHaveBeenCalledWith({
         sessionId,
         revokedAt: null,
       });
       expect(updateAllRefreshSessions).toHaveBeenCalledWith({
-        revokedAt: expect.any(String),
+        revokedAt: expect.any(Date),
       });
       expect(createAuditEvent).toHaveBeenCalledWith({
         clientId,
@@ -939,7 +999,7 @@ describe('AuthService', () => {
 
       findAuthSession.mockResolvedValue({
         id: sessionId,
-        expiresAt: new Date(Date.now() - 60_000).toISOString(),
+        expiresAt: new Date(Date.now() - 60_000),
       });
       await expect(
         service.revokeClientUserSession(

@@ -1,31 +1,29 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import postgres from '@prisma/orm-postgres/runtime';
-import type { Contract } from '../prisma/contract.d.js';
-import contractJson from '../prisma/contract.json' with { type: 'json' };
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../generated/prisma/client.js';
 
 @Injectable()
-export class PrismaService implements OnModuleInit, OnModuleDestroy {
-  readonly client: ReturnType<typeof postgres<Contract>>;
-
-  get public(): PrismaService['client']['orm']['public'] {
-    return this.client.orm.public;
-  }
-
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   constructor(config: ConfigService) {
-    this.client = postgres<Contract>({
-      contractJson,
-      url: config.getOrThrow<string>('DATABASE_URL'),
+    super({
+      adapter: new PrismaPg({
+        connectionString: config.getOrThrow<string>('DATABASE_URL'),
+      }),
     });
   }
 
   async onModuleInit(): Promise<void> {
-    await this.public.Client.where({
-      id: '00000000-0000-0000-0000-000000000000',
-    }).first();
+    await this.client.findFirst({
+      where: { id: '00000000-0000-0000-0000-000000000000' },
+      select: { id: true },
+    });
   }
 
   async onModuleDestroy(): Promise<void> {
-    await this.client.close();
+    await this.$disconnect();
   }
 }

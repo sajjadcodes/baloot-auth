@@ -1,19 +1,16 @@
 import 'dotenv/config';
-import postgres from '@prisma/orm-postgres/runtime';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../src/generated/prisma/client.js';
 import {
   parseClientSeedConfig,
   parsePlatformAdminSeedConfig,
 } from '../src/database/client-seed-config.js';
-import type { Contract } from '../src/prisma/contract.d.js';
-import contractJson from '../src/prisma/contract.json' with { type: 'json' };
-import { toVarchar } from '../src/prisma/varchar.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
   throw new Error('DATABASE_URL must be set to seed application clients.');
 }
 
-// Keep client IDs and production origins in deployment environment, not source control.
 const clients = parseClientSeedConfig(
   process.env.SEED_CLIENTS_JSON,
   process.env.CORS_ORIGINS,
@@ -22,54 +19,43 @@ const platformAdmins = parsePlatformAdminSeedConfig(
   process.env.SEED_PLATFORM_ADMIN_USERS_JSON,
   clients,
 );
-const prisma = postgres<Contract>({
-  contractJson,
-  url: databaseUrl,
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: databaseUrl }),
 });
 
 async function seed(): Promise<void> {
-  const models = prisma.orm.public;
-
   for (const client of clients) {
-    const existingClient = await models.Client.where({ id: client.id }).first();
-    if (existingClient) {
-      await models.Client.where({ id: client.id }).update({
-        name: toVarchar(client.name, 128),
-      });
-    } else {
-      await models.Client.create({
-        id: client.id,
-        name: toVarchar(client.name, 128),
-      });
-    }
+    await prisma.client.upsert({
+      where: { id: client.id },
+      update: { name: client.name },
+      create: { id: client.id, name: client.name },
+    });
 
     for (const origin of client.origins) {
-      const existingOrigin = await models.ClientAllowedOrigin.where({
-        clientId: client.id,
-        origin: toVarchar(origin, 512),
-      }).first();
-      if (!existingOrigin) {
-        await models.ClientAllowedOrigin.create({
-          clientId: client.id,
-          origin: toVarchar(origin, 512),
-        });
-      }
+      await prisma.clientAllowedOrigin.upsert({
+        where: {
+          clientId_origin: { clientId: client.id, origin },
+        },
+        update: {},
+        create: { clientId: client.id, origin },
+      });
     }
   }
 
   for (const name of ['user', 'platform_admin']) {
-    const role = await models.Role.where({ name: toVarchar(name, 64) }).first();
-    if (!role) {
-      await models.Role.create({ name: toVarchar(name, 64) });
-    }
+    await prisma.role.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    });
   }
 
   for (const admin of platformAdmins) {
-    await prisma.transaction(async (transaction) => {
-      const user = await transaction.orm.public.User.where({
-        clientId: admin.clientId,
-        email: toVarchar(admin.email, 320),
-      }).first();
+    await prisma.$transaction(async (transaction) => {
+      const user = await transaction.user.findFirst({
+        where: { clientId: admin.clientId, email: admin.email },
+        select: { id: true, status: true, emailVerifiedAt: true },
+      });
 
       if (!user || user.status !== 'ACTIVE' || !user.emailVerifiedAt) {
         throw new Error(
@@ -77,25 +63,20 @@ async function seed(): Promise<void> {
         );
       }
 
-      const role = await transaction.orm.public.Role.where({
-        name: toVarchar('platform_admin', 64),
-      }).first();
+      const role = await transaction.role.findUnique({
+        where: { name: 'platform_admin' },
+        select: { id: true },
+      });
 
       if (!role) {
         throw new Error('The platform_admin role could not be provisioned.');
       }
 
-      const assignment = await transaction.orm.public.UserRole.where({
-        userId: user.id,
-        roleId: role.id,
-      }).first();
-
-      if (!assignment) {
-        await transaction.orm.public.UserRole.create({
-          userId: user.id,
-          roleId: role.id,
-        });
-      }
+      await transaction.userRole.upsert({
+        where: { userId_roleId: { userId: user.id, roleId: role.id } },
+        update: {},
+        create: { userId: user.id, roleId: role.id },
+      });
     });
   }
 }
@@ -106,5 +87,5 @@ seed()
     process.exitCode = 1;
   })
   .finally(async () => {
-    await prisma.close();
+    await prisma.$disconnect();
   });

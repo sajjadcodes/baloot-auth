@@ -3,7 +3,6 @@ import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type { PrismaService } from '../database/prisma.service.js';
-import { toVarchar } from '../prisma/varchar.js';
 import {
   ACCESS_TOKEN_ALGORITHM,
   PASSWORD_RESET_AUDIENCE,
@@ -32,10 +31,12 @@ export class PasswordResetService {
 
   async request(email: string, clientId: string): Promise<void> {
     const normalizedEmail = email.trim().toLowerCase();
-    const user = await this.prisma.public.User.where({
-      clientId,
-      email: toVarchar(normalizedEmail, 320),
-    }).first();
+    const user = await this.prisma.user.findFirst({
+      where: {
+        clientId,
+        email: normalizedEmail,
+      },
+    });
 
     if (!user || user.status !== 'ACTIVE' || !user.emailVerifiedAt) {
       return;
@@ -83,12 +84,14 @@ export class PasswordResetService {
       );
     }
 
-    const user = await this.prisma.public.User.where({
-      id: claims.userId,
-      clientId: claims.clientId,
-      email: toVarchar(claims.email, 320),
-      status: 'ACTIVE',
-    }).first();
+    const user = await this.prisma.user.findFirst({
+      where: {
+        id: claims.userId,
+        clientId: claims.clientId,
+        email: claims.email,
+        status: 'ACTIVE',
+      },
+    });
 
     if (
       !user ||
@@ -101,31 +104,40 @@ export class PasswordResetService {
     }
 
     const passwordHash = await this.passwords.hash(password);
-    const now = new Date().toISOString();
+    const now = new Date();
 
-    await this.prisma.client.transaction(async (transaction) => {
-      const updatedUser = await transaction.orm.public.User.where({
-        id: user.id,
-        clientId: user.clientId,
-        email: toVarchar(user.email, 320),
-        status: 'ACTIVE',
-        passwordHash: toVarchar(user.passwordHash, 255),
-      }).update({ passwordHash: toVarchar(passwordHash, 255) });
+    await this.prisma.$transaction(async (transaction) => {
+      const updatedUser = await transaction.user.updateMany({
+        where: {
+          id: user.id,
+          clientId: user.clientId,
+          email: user.email,
+          status: 'ACTIVE',
+          passwordHash: user.passwordHash,
+        },
+        data: { passwordHash },
+      });
 
-      if (!updatedUser) {
+      if (updatedUser.count === 0) {
         throw new UnauthorizedException(
           'Invalid or expired password reset token.',
         );
       }
 
-      await transaction.orm.public.RefreshSession.where({
-        userId: user.id,
-        revokedAt: null,
-      }).updateAll({ revokedAt: now });
-      await transaction.orm.public.AuthSession.where({
-        userId: user.id,
-        revokedAt: null,
-      }).updateAll({ revokedAt: now });
+      await transaction.refreshSession.updateMany({
+        where: {
+          userId: user.id,
+          revokedAt: null,
+        },
+        data: { revokedAt: now },
+      });
+      await transaction.authSession.updateMany({
+        where: {
+          userId: user.id,
+          revokedAt: null,
+        },
+        data: { revokedAt: now },
+      });
     });
   }
 

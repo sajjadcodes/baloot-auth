@@ -74,9 +74,9 @@ production credentials or real user accounts for local testing.
    records. Verify a failed transaction rolls back both the operation and its
    audit write.
 
-The schema migration currently requires `refresh_sessions` to be empty at
-migration time. See [Database and migrations](./database.md) before testing a
-fresh or upgraded environment.
+The initial migration creates the current schema and is intended only for a
+fresh database. See [Database and migrations](./database.md) before applying
+migrations to a fresh or existing environment.
 
 For a hosted deployment, repeat the applicable API smoke tests against the
 deployed HTTPS endpoint using synthetic accounts and an approved test client.

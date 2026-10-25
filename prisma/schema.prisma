@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum ClientStatus {
+  ACTIVE
+  DISABLED
+}
+
+model Client {
+  id               String                @id @default(uuid()) @db.Uuid
+  name             String                @db.VarChar(128)
+  status           ClientStatus          @default(ACTIVE)
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  allowedOrigins   ClientAllowedOrigin[]
+  users            User[]
+  adminAuditEvents AdminAuditEvent[]
+
+  @@map("clients")
+}
+
+model ClientAllowedOrigin {
+  clientId  String   @map("client_id") @db.Uuid
+  origin    String   @db.VarChar(512)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@id([clientId, origin])
+  @@map("client_allowed_origins")
+}
+
+model User {
+  id                       String            @id @default(uuid()) @db.Uuid
+  clientId                 String            @map("client_id") @db.Uuid
+  email                    String            @db.VarChar(320)
+  passwordHash             String            @map("password_hash") @db.VarChar(255)
+  emailVerifiedAt          DateTime?         @map("email_verified_at") @db.Timestamptz(6)
+  status                   UserStatus        @default(ACTIVE)
+  createdAt                DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  client                   Client            @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  roles                    UserRole[]
+  refreshSessions          RefreshSession[]
+  authSessions             AuthSession[]
+  adminAuditEventsAsActor  AdminAuditEvent[] @relation("AdminAuditActor")
+  adminAuditEventsAsTarget AdminAuditEvent[] @relation("AdminAuditTarget")
+
+  @@unique([clientId, email])
+  @@map("users")
+}
+
+model Role {
+  id          String     @id @default(uuid()) @db.Uuid
+  name        String     @unique @db.VarChar(64)
+  description String?    @db.VarChar(255)
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  users       UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  userId     String   @map("user_id") @db.Uuid
+  roleId     String   @map("role_id") @db.Uuid
+  assignedAt DateTime @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+model RefreshSession {
+  id          String      @id @default(uuid()) @db.Uuid
+  userId      String      @map("user_id") @db.Uuid
+  sessionId   String      @map("session_id") @db.Uuid
+  tokenHash   String      @unique @map("token_hash") @db.VarChar(128)
+  expiresAt   DateTime    @map("expires_at") @db.Timestamptz(6)
+  revokedAt   DateTime?   @map("revoked_at") @db.Timestamptz(6)
+  userAgent   String?     @map("user_agent") @db.VarChar(512)
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  authSession AuthSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([sessionId, revokedAt])
+  @@index([expiresAt])
+  @@map("refresh_sessions")
+}
+
+model AuthSession {
+  id              String           @id @default(uuid()) @db.Uuid
+  userId          String           @map("user_id") @db.Uuid
+  expiresAt       DateTime         @map("expires_at") @db.Timestamptz(6)
+  revokedAt       DateTime?        @map("revoked_at") @db.Timestamptz(6)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshSessions RefreshSession[]
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+model AdminAuditEvent {
+  id           String   @id @default(uuid()) @db.Uuid
+  clientId     String   @map("client_id") @db.Uuid
+  actorUserId  String   @map("actor_user_id") @db.Uuid
+  targetUserId String   @map("target_user_id") @db.Uuid
+  action       String   @db.VarChar(64)
+  sessionId    String?  @map("session_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  client       Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  actor        User     @relation("AdminAuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  target       User     @relation("AdminAuditTarget", fields: [targetUserId], references: [id], onDelete: Restrict)
+
+  @@index([clientId, createdAt])
+  @@index([targetUserId, createdAt])
+  @@map("admin_audit_events")
+}

@@ -1,12 +1,10 @@
 import 'dotenv/config';
-import postgres from '@prisma/orm-postgres/runtime';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../src/generated/prisma/client.js';
 import {
   parsePlatformAdminRevocationArgs,
   revokePlatformAdminAssignment,
 } from '../src/database/platform-admin-revocation.js';
-import type { Contract } from '../src/prisma/contract.d.js';
-import contractJson from '../src/prisma/contract.json' with { type: 'json' };
-import { toVarchar } from '../src/prisma/varchar.js';
 
 const target = parsePlatformAdminRevocationArgs(process.argv.slice(2));
 const databaseUrl = process.env.DATABASE_URL;
@@ -16,17 +14,13 @@ if (!databaseUrl) {
   );
 }
 
-const prisma = postgres<Contract>({
-  contractJson,
-  url: databaseUrl,
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: databaseUrl }),
 });
 
 async function revokePlatformAdmin(): Promise<void> {
-  const revoked = await prisma.transaction((transaction) =>
-    revokePlatformAdminAssignment(transaction, {
-      ...target,
-      email: toVarchar(target.email, 320),
-    }),
+  const revoked = await prisma.$transaction((transaction) =>
+    revokePlatformAdminAssignment(transaction, target),
   );
 
   if (revoked) {
@@ -49,5 +43,5 @@ revokePlatformAdmin()
     process.exitCode = 1;
   })
   .finally(async () => {
-    await prisma.close();
+    await prisma.$disconnect();
   });

@@ -16,7 +16,7 @@ describe('PasswordResetService', () => {
     email: 'person@example.com',
     passwordHash: 'argon2-old-hash',
     status: 'ACTIVE',
-    emailVerifiedAt: new Date().toISOString(),
+    emailVerifiedAt: new Date(),
   };
   const resetSecret = 'test-only-password-reset-secret-32-characters';
 
@@ -45,15 +45,28 @@ describe('PasswordResetService', () => {
     sendEmail = jest.fn().mockResolvedValue(undefined);
 
     const transaction = {
-      orm: {
-        public: {
-          User: { where: whereUser },
-          RefreshSession: {
-            where: jest.fn(() => ({ updateAll: updateSessions })),
-          },
-          AuthSession: {
-            where: jest.fn(() => ({ updateAll: updateAuthSessions })),
-          },
+      user: {
+        updateMany: async ({
+          where,
+          data,
+        }: {
+          where: Record<string, unknown>;
+          data: Record<string, unknown>;
+        }) => {
+          const result = await whereUser(where).update(data);
+          return { count: result ? 1 : 0 };
+        },
+      },
+      refreshSession: {
+        updateMany: async ({ data }: { data: Record<string, unknown> }) => {
+          await updateSessions(data);
+          return { count: 1 };
+        },
+      },
+      authSession: {
+        updateMany: async ({ data }: { data: Record<string, unknown> }) => {
+          await updateAuthSessions(data);
+          return { count: 1 };
         },
       },
     };
@@ -72,8 +85,11 @@ describe('PasswordResetService', () => {
         verifyAsync: verifyToken,
       } as unknown as JwtService,
       {
-        client: { transaction: transact },
-        public: { User: { where: whereUser } },
+        $transaction: transact,
+        user: {
+          findFirst: ({ where }: { where: Record<string, unknown> }) =>
+            whereUser(where).first(),
+        },
       } as unknown as PrismaService,
       { hash: hashPassword } as unknown as PasswordService,
       { send: sendEmail } as unknown as EmailDeliveryService,
@@ -168,10 +184,10 @@ describe('PasswordResetService', () => {
       passwordHash: 'argon2-new-hash',
     });
     expect(updateSessions).toHaveBeenCalledWith({
-      revokedAt: expect.any(String),
+      revokedAt: expect.any(Date),
     });
     expect(updateAuthSessions).toHaveBeenCalledWith({
-      revokedAt: expect.any(String),
+      revokedAt: expect.any(Date),
     });
     expect(transact).toHaveBeenCalledTimes(1);
     expect(hashPassword).toHaveBeenCalledWith('new secure password');

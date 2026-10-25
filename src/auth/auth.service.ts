@@ -9,7 +9,6 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { PrismaService } from '../database/prisma.service.js';
-import { toVarchar } from '../prisma/varchar.js';
 import {
   REFRESH_TOKEN_BYTES,
   REFRESH_TOKEN_HASH_ALGORITHM,
@@ -68,10 +67,12 @@ export class AuthService {
 
     let user: { id: string; email: string; clientId: string };
     try {
-      user = await this.prisma.client.transaction(async (transaction) => {
-        const role = await transaction.orm.public.Role.where({
-          name: toVarchar('user', 64),
-        }).first();
+      user = await this.prisma.$transaction(async (transaction) => {
+        const role = await transaction.role.findFirst({
+          where: {
+            name: 'user',
+          },
+        });
 
         if (!role) {
           throw new Error(
@@ -79,15 +80,12 @@ export class AuthService {
           );
         }
 
-        const createdUser = await transaction.orm.public.User.create({
-          clientId,
-          email: toVarchar(normalizedEmail, 320),
-          passwordHash: toVarchar(passwordHash, 255),
+        const createdUser = await transaction.user.create({
+          data: { clientId, email: normalizedEmail, passwordHash },
         });
 
-        await transaction.orm.public.UserRole.create({
-          userId: createdUser.id,
-          roleId: role.id,
+        await transaction.userRole.create({
+          data: { userId: createdUser.id, roleId: role.id },
         });
 
         return {
@@ -97,7 +95,7 @@ export class AuthService {
         };
       });
     } catch (error) {
-      if (isPostgresUniqueConstraintViolation(error)) {
+      if (isUniqueConstraintViolation(error)) {
         throw new ConflictException('Registration could not be completed.');
       }
 
@@ -118,10 +116,12 @@ export class AuthService {
     clientId: string,
   ): Promise<LoginResult> {
     const normalizedEmail = email.trim().toLowerCase();
-    const user = await this.prisma.public.User.where({
-      clientId,
-      email: toVarchar(normalizedEmail, 320),
-    }).first();
+    const user = await this.prisma.user.findFirst({
+      where: {
+        clientId,
+        email: normalizedEmail,
+      },
+    });
 
     if (
       !user ||
@@ -133,26 +133,19 @@ export class AuthService {
     }
 
     const refreshToken = randomBytes(REFRESH_TOKEN_BYTES).toString('base64url');
-    const tokenHash = createHash(REFRESH_TOKEN_HASH_ALGORITHM)
-      .update(refreshToken)
-      .digest('hex');
+    const tokenHash = hashRefreshToken(refreshToken);
     const sessionId = randomUUID();
     const expiresAt = new Date(
       Date.now() +
         this.config.getOrThrow<number>('REFRESH_SESSION_TTL_SECONDS') * 1000,
     );
 
-    await this.prisma.client.transaction(async (transaction) => {
-      await transaction.orm.public.AuthSession.create({
-        id: sessionId,
-        userId: user.id,
-        expiresAt: expiresAt.toISOString(),
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.authSession.create({
+        data: { id: sessionId, userId: user.id, expiresAt },
       });
-      await transaction.orm.public.RefreshSession.create({
-        userId: user.id,
-        sessionId,
-        tokenHash: toVarchar(tokenHash, REFRESH_TOKEN_HASH_MAX_LENGTH),
-        expiresAt: expiresAt.toISOString(),
+      await transaction.refreshSession.create({
+        data: { userId: user.id, sessionId, tokenHash, expiresAt },
       });
     });
 
@@ -177,36 +170,44 @@ export class AuthService {
       return;
     }
 
-    const tokenHash = createHash(REFRESH_TOKEN_HASH_ALGORITHM)
-      .update(refreshToken)
-      .digest('hex');
-    await this.prisma.client.transaction(async (transaction) => {
-      const session = await transaction.orm.public.RefreshSession.where({
-        tokenHash: toVarchar(tokenHash, REFRESH_TOKEN_HASH_MAX_LENGTH),
-      }).first();
+    const tokenHash = hashRefreshToken(refreshToken);
+    await this.prisma.$transaction(async (transaction) => {
+      const session = await transaction.refreshSession.findFirst({
+        where: {
+          tokenHash: tokenHash,
+        },
+      });
 
       if (!session) {
         return;
       }
 
-      const user = await transaction.orm.public.User.where({
-        id: session.userId,
-      }).first();
+      const user = await transaction.user.findFirst({
+        where: {
+          id: session.userId,
+        },
+      });
 
       if (!user || user.clientId !== clientId) {
         return;
       }
 
-      const now = new Date().toISOString();
-      await transaction.orm.public.AuthSession.where({
-        id: session.sessionId,
-        userId: session.userId,
-        revokedAt: null,
-      }).update({ revokedAt: now });
-      await transaction.orm.public.RefreshSession.where({
-        sessionId: session.sessionId,
-        revokedAt: null,
-      }).updateAll({ revokedAt: now });
+      const now = new Date();
+      await transaction.authSession.updateMany({
+        where: {
+          id: session.sessionId,
+          userId: session.userId,
+          revokedAt: null,
+        },
+        data: { revokedAt: now },
+      });
+      await transaction.refreshSession.updateMany({
+        where: {
+          sessionId: session.sessionId,
+          revokedAt: null,
+        },
+        data: { revokedAt: now },
+      });
     });
   }
 
@@ -214,10 +215,12 @@ export class AuthService {
     userId: string,
     clientId: string,
   ): Promise<{ id: string; email: string }> {
-    const user = await this.prisma.public.User.where({
-      id: userId,
-      clientId,
-    }).first();
+    const user = await this.prisma.user.findFirst({
+      where: {
+        id: userId,
+        clientId,
+      },
+    });
 
     if (!user || user.status !== 'ACTIVE' || !user.emailVerifiedAt) {
       throw new UnauthorizedException('Invalid or expired access token.');
@@ -230,10 +233,12 @@ export class AuthService {
     targetUserId: string,
     clientId: string,
   ): Promise<AdminUserInfo> {
-    const user = await this.prisma.public.User.where({
-      id: targetUserId,
-      clientId,
-    }).first();
+    const user = await this.prisma.user.findFirst({
+      where: {
+        id: targetUserId,
+        clientId,
+      },
+    });
 
     if (!user) {
       throw new NotFoundException('User not found.');
@@ -241,12 +246,10 @@ export class AuthService {
 
     const roles: string[] = [];
     for (const roleName of ['user', 'platform_admin']) {
-      const assignment = await this.prisma.public.UserRole.include(
-        'role',
-        (role) => role.where({ name: toVarchar(roleName, 64) }),
-      )
-        .where({ userId: user.id })
-        .first();
+      const assignment = await this.prisma.userRole.findFirst({
+        where: { userId: user.id, role: { is: { name: roleName } } },
+        select: { userId: true },
+      });
 
       if (assignment) {
         roles.push(roleName);
@@ -257,8 +260,8 @@ export class AuthService {
       id: user.id,
       email: user.email,
       status: user.status,
-      emailVerifiedAt: user.emailVerifiedAt,
-      createdAt: user.createdAt,
+      emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
+      createdAt: user.createdAt.toISOString(),
       roles,
     };
   }
@@ -267,27 +270,29 @@ export class AuthService {
     targetUserId: string,
     clientId: string,
   ): Promise<AdminSessionInfo[]> {
-    const user = await this.prisma.public.User.where({
-      id: targetUserId,
-      clientId,
-    }).first();
+    const user = await this.prisma.user.findFirst({
+      where: {
+        id: targetUserId,
+        clientId,
+      },
+    });
 
     if (!user) {
       throw new NotFoundException('User not found.');
     }
 
     const now = Date.now();
-    const sessions = await this.prisma.public.AuthSession.where({
-      userId: user.id,
-      revokedAt: null,
-    }).all();
+    const sessions = await this.prisma.authSession.findMany({
+      where: { userId: user.id, revokedAt: null },
+      select: { id: true, createdAt: true, expiresAt: true },
+    });
 
     return sessions
-      .filter((session) => Date.parse(session.expiresAt) > now)
+      .filter((session) => session.expiresAt.getTime() > now)
       .map((session) => ({
         id: session.id,
-        createdAt: session.createdAt,
-        expiresAt: session.expiresAt,
+        createdAt: session.createdAt.toISOString(),
+        expiresAt: session.expiresAt.toISOString(),
       }));
   }
 
@@ -300,34 +305,47 @@ export class AuthService {
       throw new ForbiddenException('Administrators cannot disable themselves.');
     }
 
-    await this.prisma.client.transaction(async (transaction) => {
-      const user = await transaction.orm.public.User.where({
-        id: targetUserId,
-        clientId,
-      }).first();
+    await this.prisma.$transaction(async (transaction) => {
+      const user = await transaction.user.findFirst({
+        where: {
+          id: targetUserId,
+          clientId,
+        },
+      });
 
       if (!user) {
         throw new NotFoundException('User not found.');
       }
 
-      const now = new Date().toISOString();
-      await transaction.orm.public.User.where({
-        id: user.id,
-        clientId,
-      }).update({ status: 'DISABLED' });
-      await transaction.orm.public.AuthSession.where({
-        userId: user.id,
-        revokedAt: null,
-      }).updateAll({ revokedAt: now });
-      await transaction.orm.public.RefreshSession.where({
-        userId: user.id,
-        revokedAt: null,
-      }).updateAll({ revokedAt: now });
-      await transaction.orm.public.AdminAuditEvent.create({
-        clientId,
-        actorUserId,
-        targetUserId: user.id,
-        action: toVarchar('USER_DISABLED', 64),
+      const now = new Date();
+      await transaction.user.updateMany({
+        where: {
+          id: user.id,
+          clientId,
+        },
+        data: { status: 'DISABLED' },
+      });
+      await transaction.authSession.updateMany({
+        where: {
+          userId: user.id,
+          revokedAt: null,
+        },
+        data: { revokedAt: now },
+      });
+      await transaction.refreshSession.updateMany({
+        where: {
+          userId: user.id,
+          revokedAt: null,
+        },
+        data: { revokedAt: now },
+      });
+      await transaction.adminAuditEvent.create({
+        data: {
+          clientId,
+          actorUserId,
+          targetUserId: user.id,
+          action: 'USER_DISABLED',
+        },
       });
     });
   }
@@ -337,25 +355,32 @@ export class AuthService {
     targetUserId: string,
     clientId: string,
   ): Promise<void> {
-    await this.prisma.client.transaction(async (transaction) => {
-      const user = await transaction.orm.public.User.where({
-        id: targetUserId,
-        clientId,
-      }).first();
+    await this.prisma.$transaction(async (transaction) => {
+      const user = await transaction.user.findFirst({
+        where: {
+          id: targetUserId,
+          clientId,
+        },
+      });
 
       if (!user) {
         throw new NotFoundException('User not found.');
       }
 
-      await transaction.orm.public.User.where({
-        id: user.id,
-        clientId,
-      }).update({ status: 'ACTIVE' });
-      await transaction.orm.public.AdminAuditEvent.create({
-        clientId,
-        actorUserId,
-        targetUserId: user.id,
-        action: toVarchar('USER_ENABLED', 64),
+      await transaction.user.updateMany({
+        where: {
+          id: user.id,
+          clientId,
+        },
+        data: { status: 'ACTIVE' },
+      });
+      await transaction.adminAuditEvent.create({
+        data: {
+          clientId,
+          actorUserId,
+          targetUserId: user.id,
+          action: 'USER_ENABLED',
+        },
       });
     });
   }
@@ -366,42 +391,54 @@ export class AuthService {
     clientId: string,
     sessionId: string,
   ): Promise<void> {
-    await this.prisma.client.transaction(async (transaction) => {
-      const user = await transaction.orm.public.User.where({
-        id: targetUserId,
-        clientId,
-      }).first();
+    await this.prisma.$transaction(async (transaction) => {
+      const user = await transaction.user.findFirst({
+        where: {
+          id: targetUserId,
+          clientId,
+        },
+      });
 
       if (!user) {
         throw new NotFoundException('User not found.');
       }
 
-      const session = await transaction.orm.public.AuthSession.where({
-        id: sessionId,
-        userId: user.id,
-        revokedAt: null,
-      }).first();
+      const session = await transaction.authSession.findFirst({
+        where: {
+          id: sessionId,
+          userId: user.id,
+          revokedAt: null,
+        },
+      });
 
-      if (!session || Date.parse(session.expiresAt) <= Date.now()) {
+      if (!session || session.expiresAt.getTime() <= Date.now()) {
         throw new NotFoundException('Active session not found.');
       }
 
-      const now = new Date().toISOString();
-      await transaction.orm.public.AuthSession.where({
-        id: session.id,
-        userId: user.id,
-        revokedAt: null,
-      }).update({ revokedAt: now });
-      await transaction.orm.public.RefreshSession.where({
-        sessionId: session.id,
-        revokedAt: null,
-      }).updateAll({ revokedAt: now });
-      await transaction.orm.public.AdminAuditEvent.create({
-        clientId,
-        actorUserId,
-        targetUserId: user.id,
-        action: toVarchar('SESSION_REVOKED', 64),
-        sessionId: session.id,
+      const now = new Date();
+      await transaction.authSession.updateMany({
+        where: {
+          id: session.id,
+          userId: user.id,
+          revokedAt: null,
+        },
+        data: { revokedAt: now },
+      });
+      await transaction.refreshSession.updateMany({
+        where: {
+          sessionId: session.id,
+          revokedAt: null,
+        },
+        data: { revokedAt: now },
+      });
+      await transaction.adminAuditEvent.create({
+        data: {
+          clientId,
+          actorUserId,
+          targetUserId: user.id,
+          action: 'SESSION_REVOKED',
+          sessionId: session.id,
+        },
       });
     });
   }
@@ -411,10 +448,12 @@ export class AuthService {
     clientId: string,
   ): Promise<void> {
     const normalizedEmail = email.trim().toLowerCase();
-    const user = await this.prisma.public.User.where({
-      clientId,
-      email: toVarchar(normalizedEmail, 320),
-    }).first();
+    const user = await this.prisma.user.findFirst({
+      where: {
+        clientId,
+        email: normalizedEmail,
+      },
+    });
 
     if (!user || user.status !== 'ACTIVE' || user.emailVerifiedAt !== null) {
       return;
@@ -445,15 +484,18 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired verification token.');
     }
 
-    const updatedUser = await this.prisma.public.User.where({
-      id: claims.userId,
-      clientId: claims.clientId,
-      email: toVarchar(claims.email, 320),
-      status: 'ACTIVE',
-      emailVerifiedAt: null,
-    }).update({ emailVerifiedAt: new Date().toISOString() });
+    const updatedUser = await this.prisma.user.updateMany({
+      where: {
+        id: claims.userId,
+        clientId: claims.clientId,
+        email: claims.email,
+        status: 'ACTIVE',
+        emailVerifiedAt: null,
+      },
+      data: { emailVerifiedAt: new Date() },
+    });
 
-    if (!updatedUser) {
+    if (updatedUser.count === 0) {
       throw new UnauthorizedException('Invalid or expired verification token.');
     }
   }
@@ -464,133 +506,144 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired refresh token.');
     }
 
-    const tokenHash = createHash(REFRESH_TOKEN_HASH_ALGORITHM)
-      .update(refreshToken)
-      .digest('hex');
+    const tokenHash = hashRefreshToken(refreshToken);
     const now = new Date();
-    const nowString = now.toISOString();
     // Prepare replacement credentials before the transaction can consume the old token.
     const rotatedToken = randomBytes(REFRESH_TOKEN_BYTES).toString('base64url');
-    const rotatedTokenHash = createHash(REFRESH_TOKEN_HASH_ALGORITHM)
-      .update(rotatedToken)
-      .digest('hex');
+    const rotatedTokenHash = hashRefreshToken(rotatedToken);
     const expiresAt = new Date(
       now.getTime() +
         this.config.getOrThrow<number>('REFRESH_SESSION_TTL_SECONDS') * 1000,
     );
 
     // Conditionally revoke the current row to ensure concurrent refreshes cannot both rotate it.
-    const outcome = await this.prisma.client.transaction(
-      async (transaction) => {
-        const sessions = transaction.orm.public.RefreshSession;
-        const session = await sessions
-          .where({
-            tokenHash: toVarchar(tokenHash, REFRESH_TOKEN_HASH_MAX_LENGTH),
-          })
-          .first();
+    const outcome = await this.prisma.$transaction(async (transaction) => {
+      const sessions = transaction.refreshSession;
+      const session = await sessions.findFirst({
+        where: {
+          tokenHash,
+        },
+      });
 
-        // Reject unknown tokens without revealing whether a session exists.
-        if (!session) {
-          return { kind: 'invalid' } as const;
-        }
+      // Reject unknown tokens without revealing whether a session exists.
+      if (!session) {
+        return { kind: 'invalid' } as const;
+      }
 
-        // A revoked token proves replay; revoke the user's other active sessions too.
-        if (session.revokedAt !== null) {
-          await transaction.orm.public.AuthSession.where({
+      // A revoked token proves replay; revoke the user's other active sessions too.
+      if (session.revokedAt !== null) {
+        await transaction.authSession.updateMany({
+          where: {
             userId: session.userId,
             revokedAt: null,
-          }).updateAll({ revokedAt: nowString });
-          await sessions
-            .where({ userId: session.userId, revokedAt: null })
-            .updateAll({ revokedAt: nowString });
-          return { kind: 'reused' } as const;
-        }
+          },
+          data: { revokedAt: now },
+        });
+        await sessions.updateMany({
+          where: { userId: session.userId, revokedAt: null },
+          data: { revokedAt: now },
+        });
+        return { kind: 'reused' } as const;
+      }
 
-        // Expired sessions cannot be rotated.
-        if (Date.parse(session.expiresAt) <= now.getTime()) {
-          return { kind: 'invalid' } as const;
-        }
+      // Expired sessions cannot be rotated.
+      if (session.expiresAt.getTime() <= now.getTime()) {
+        return { kind: 'invalid' } as const;
+      }
 
-        const authSession = await transaction.orm.public.AuthSession.where({
+      const authSession = await transaction.authSession.findFirst({
+        where: {
           id: session.sessionId,
           userId: session.userId,
           revokedAt: null,
-        }).first();
+        },
+      });
 
-        if (
-          !authSession ||
-          Date.parse(authSession.expiresAt) <= now.getTime()
-        ) {
-          return { kind: 'invalid' } as const;
-        }
+      if (!authSession || authSession.expiresAt.getTime() <= now.getTime()) {
+        return { kind: 'invalid' } as const;
+      }
 
-        // Bind the refresh session to both an active account and its registered client.
-        const user = await transaction.orm.public.User.where({
+      // Bind the refresh session to both an active account and its registered client.
+      const user = await transaction.user.findFirst({
+        where: {
           id: session.userId,
-        }).first();
+        },
+      });
 
-        if (!user || user.clientId !== clientId) {
-          return { kind: 'invalid' } as const;
-        }
+      if (!user || user.clientId !== clientId) {
+        return { kind: 'invalid' } as const;
+      }
 
-        // Disable refresh for inactive users and invalidate this session.
-        if (user.status !== 'ACTIVE' || !user.emailVerifiedAt) {
-          await transaction.orm.public.AuthSession.where({
+      // Disable refresh for inactive users and invalidate this session.
+      if (user.status !== 'ACTIVE' || !user.emailVerifiedAt) {
+        await transaction.authSession.updateMany({
+          where: {
             id: authSession.id,
             revokedAt: null,
-          }).update({ revokedAt: nowString });
-          await sessions
-            .where({ sessionId: session.sessionId, revokedAt: null })
-            .updateAll({ revokedAt: nowString });
-          return { kind: 'invalid' } as const;
-        }
+          },
+          data: { revokedAt: now },
+        });
+        await sessions.updateMany({
+          where: { sessionId: session.sessionId, revokedAt: null },
+          data: { revokedAt: now },
+        });
+        return { kind: 'invalid' } as const;
+      }
 
-        // Consume only a still-active row; a null result means another request used it first.
-        const revokedSession = await sessions
-          .where({ id: session.id, revokedAt: null })
-          .update({ revokedAt: nowString });
+      // Consume only a still-active row; a null result means another request used it first.
+      const revokedSession = await sessions.updateMany({
+        where: { id: session.id, revokedAt: null },
+        data: { revokedAt: now },
+      });
 
-        if (!revokedSession) {
-          await transaction.orm.public.AuthSession.where({
+      if (revokedSession.count === 0) {
+        await transaction.authSession.updateMany({
+          where: {
             userId: session.userId,
             revokedAt: null,
-          }).updateAll({ revokedAt: nowString });
-          await sessions
-            .where({ userId: session.userId, revokedAt: null })
-            .updateAll({ revokedAt: nowString });
-          return { kind: 'reused' } as const;
-        }
+          },
+          data: { revokedAt: now },
+        });
+        await sessions.updateMany({
+          where: { userId: session.userId, revokedAt: null },
+          data: { revokedAt: now },
+        });
+        return { kind: 'reused' } as const;
+      }
 
-        const renewedAuthSession =
-          await transaction.orm.public.AuthSession.where({
-            id: authSession.id,
-            revokedAt: null,
-          }).update({ expiresAt: expiresAt.toISOString() });
+      const renewedAuthSession = await transaction.authSession.updateMany({
+        where: {
+          id: authSession.id,
+          revokedAt: null,
+        },
+        data: { expiresAt },
+      });
 
-        if (!renewedAuthSession) {
-          return { kind: 'invalid' } as const;
-        }
+      if (renewedAuthSession.count === 0) {
+        return { kind: 'invalid' } as const;
+      }
 
-        // Store only the replacement token hash in the same transaction as revocation.
-        await sessions.create({
+      // Store only the replacement token hash in the same transaction as revocation.
+      await sessions.create({
+        data: {
           userId: user.id,
           sessionId: authSession.id,
-          tokenHash: toVarchar(rotatedTokenHash, REFRESH_TOKEN_HASH_MAX_LENGTH),
-          expiresAt: expiresAt.toISOString(),
-        });
-        const accessToken = await this.accessTokens.issue(
-          user.id,
-          clientId,
-          authSession.id,
-        );
+          tokenHash: rotatedTokenHash,
+          expiresAt,
+        },
+      });
+      const accessToken = await this.accessTokens.issue(
+        user.id,
+        clientId,
+        authSession.id,
+      );
 
-        return {
-          kind: 'rotated',
-          user: { id: user.id, email: user.email },
-          accessToken,
-        } as const;
-      },
-    );
+      return {
+        kind: 'rotated',
+        user: { id: user.id, email: user.email },
+        accessToken,
+      } as const;
+    });
 
     if (outcome.kind !== 'rotated') {
       // Keep response details uniform for unknown, expired, disabled, and replayed tokens.
@@ -605,11 +658,25 @@ export class AuthService {
   }
 }
 
-function isPostgresUniqueConstraintViolation(error: unknown): boolean {
+function hashRefreshToken(token: string): string {
+  const hash = createHash(REFRESH_TOKEN_HASH_ALGORITHM)
+    .update(token)
+    .digest('hex');
+
+  if (Buffer.byteLength(hash, 'utf8') > REFRESH_TOKEN_HASH_MAX_LENGTH) {
+    throw new RangeError(
+      'Refresh-token hash exceeds the database column limit.',
+    );
+  }
+
+  return hash;
+}
+
+function isUniqueConstraintViolation(error: unknown): boolean {
   return (
     typeof error === 'object' &&
     error !== null &&
     'code' in error &&
-    error.code === '23505'
+    (error.code === 'P2002' || error.code === '23505')
   );
 }

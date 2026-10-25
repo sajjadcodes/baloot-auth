@@ -21,23 +21,21 @@ describe('JwtStrategy', () => {
     findSession = jest.fn().mockResolvedValue({
       id: sessionId,
       userId,
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      expiresAt: new Date(Date.now() + 60_000),
       revokedAt: null,
     });
     findUser = jest.fn().mockResolvedValue({
       id: userId,
       clientId,
       status: 'ACTIVE',
-      emailVerifiedAt: new Date().toISOString(),
+      emailVerifiedAt: new Date(),
     });
-    whereSession = jest.fn(() => ({ first: findSession }));
-    whereUser = jest.fn(() => ({ first: findUser }));
+    whereSession = jest.fn();
+    whereUser = jest.fn();
 
     const prisma = {
-      public: {
-        AuthSession: { where: whereSession },
-        User: { where: whereUser },
-      },
+      authSession: { findFirst: whereSession.mockImplementation(findSession) },
+      user: { findFirst: whereUser.mockImplementation(findUser) },
     } as unknown as PrismaService;
     strategy = new JwtStrategy(
       new ConfigService({ JWT_ACCESS_SECRET: secret }),
@@ -51,11 +49,13 @@ describe('JwtStrategy', () => {
     ).resolves.toEqual({ userId, clientId, sessionId });
 
     expect(whereSession).toHaveBeenCalledWith({
-      id: sessionId,
-      userId,
-      revokedAt: null,
+      where: {
+        id: sessionId,
+        userId,
+        revokedAt: null,
+      },
     });
-    expect(whereUser).toHaveBeenCalledWith({ id: userId, clientId });
+    expect(whereUser).toHaveBeenCalledWith({ where: { id: userId, clientId } });
   });
 
   it.each([
@@ -82,7 +82,7 @@ describe('JwtStrategy', () => {
 
     findSession.mockResolvedValueOnce({
       id: sessionId,
-      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      expiresAt: new Date(Date.now() - 60_000),
     });
     await expect(
       strategy.validate({ sub: userId, clientId, sessionId }),

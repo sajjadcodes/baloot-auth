@@ -1,7 +1,7 @@
 # Baloot Auth
 
 Reusable authentication and basic authorization for applications. Baloot Auth
-is built with NestJS, TypeScript, PostgreSQL, and Prisma ORM 8.
+is built with NestJS, TypeScript, PostgreSQL, and Prisma ORM 7.
 
 The service provides client-scoped registration and email verification,
 password reset, HttpOnly cookie authentication, rotating refresh tokens,
@@ -25,18 +25,20 @@ infrastructure, and operator procedures.
 ## Quick Start
 
 Requirements: Node.js, pnpm, PostgreSQL, and environment-specific email
-configuration. Prisma ORM 8 is currently an installed release candidate.
+configuration. Prisma ORM 7 is pinned to a stable release.
 
 ```bash
 pnpm install
 ```
 
 Copy `.env.example` to an untracked `.env` and configure a local PostgreSQL
-database, secrets, email provider, allowed origins, and seed clients. The
-database schema must be provisioned through the reviewed migration process
-for your environment before seeding or starting the service.
+database, secrets, email provider, allowed origins, and seed clients.
+
+For a fresh local database, apply the committed initial migration before
+seeding:
 
 ```bash
+pnpm db:migrate:dev
 pnpm db:seed
 pnpm start:dev
 ```
@@ -54,7 +56,7 @@ pnpm exec eslint "src/**/*.ts" "test/**/*.ts"
 
 See [Testing](./docs/testing.md) for focused test commands and the manual
 smoke-test checklist. See [Database and migrations](./docs/database.md) before
-making contract or database changes.
+making schema or database changes.
 
 See [Infrastructure](./docs/infrastructure.md) for the planned blitz.cloud and
 Supabase deployment architecture, configuration boundaries, and rollout

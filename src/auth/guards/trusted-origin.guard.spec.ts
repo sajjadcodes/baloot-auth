@@ -11,9 +11,6 @@ describe('TrustedOriginGuard', () => {
   const clientId = '00000000-0000-4000-8000-000000000001';
   let guard: TrustedOriginGuard;
   let findClient: jest.Mock;
-  let includeAllowedOrigins: jest.Mock;
-  let whereClient: jest.Mock;
-  let whereAllowedOrigin: jest.Mock;
 
   function contextFor(
     origin?: string,
@@ -40,23 +37,10 @@ describe('TrustedOriginGuard', () => {
       status: 'ACTIVE',
       allowedOrigins: [{ origin: trustedOrigin }],
     });
-    whereClient = jest.fn().mockReturnThis();
-    whereAllowedOrigin = jest.fn().mockReturnThis();
-    includeAllowedOrigins = jest.fn(
-      (
-        _relation: string,
-        buildQuery: (query: { where: jest.Mock }) => unknown,
-      ) => {
-        buildQuery({ where: whereAllowedOrigin });
-        return { where: whereClient, first: findClient };
-      },
-    );
     guard = new TrustedOriginGuard(
       new ConfigService({ CORS_ORIGINS: [trustedOrigin] }),
       {
-        public: {
-          Client: { include: includeAllowedOrigins },
-        },
+        client: { findFirst: findClient },
       } as unknown as PrismaService,
     );
   });
@@ -65,12 +49,14 @@ describe('TrustedOriginGuard', () => {
     await expect(
       guard.canActivate(contextFor(trustedOrigin, clientId)),
     ).resolves.toBe(true);
-    expect(includeAllowedOrigins).toHaveBeenCalledWith(
-      'allowedOrigins',
-      expect.any(Function),
-    );
-    expect(whereAllowedOrigin).toHaveBeenCalledWith({ origin: trustedOrigin });
-    expect(whereClient).toHaveBeenCalledWith({ id: clientId });
+    expect(findClient).toHaveBeenCalledWith({
+      where: {
+        id: clientId,
+        status: 'ACTIVE',
+        allowedOrigins: { some: { origin: trustedOrigin } },
+      },
+      include: { allowedOrigins: { where: { origin: trustedOrigin } } },
+    });
   });
 
   it.each([
@@ -97,10 +83,7 @@ describe('TrustedOriginGuard', () => {
   });
 
   it('rejects a disabled client', async () => {
-    findClient.mockResolvedValue({
-      status: 'DISABLED',
-      allowedOrigins: [{ origin: trustedOrigin }],
-    });
+    findClient.mockResolvedValue(null);
 
     await expect(
       guard.canActivate(contextFor(trustedOrigin, clientId)),

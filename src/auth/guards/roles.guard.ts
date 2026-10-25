@@ -9,7 +9,6 @@ import {
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import type { PrismaService } from '../../database/prisma.service.js';
-import { toVarchar } from '../../prisma/varchar.js';
 import { ROLES_KEY } from '../decorators/roles.decorator.js';
 import type { AuthenticatedUser } from '../strategies/jwt.strategy.js';
 
@@ -39,10 +38,12 @@ export class RolesGuard implements CanActivate {
       throw new UnauthorizedException('Invalid or expired access token.');
     }
 
-    const user = await this.prisma.public.User.where({
-      id: authenticatedUser.userId,
-      clientId: authenticatedUser.clientId,
-    }).first();
+    const user = await this.prisma.user.findFirst({
+      where: {
+        id: authenticatedUser.userId,
+        clientId: authenticatedUser.clientId,
+      },
+    });
 
     if (!user || user.status !== 'ACTIVE' || !user.emailVerifiedAt) {
       throw new UnauthorizedException('Invalid or expired access token.');
@@ -55,12 +56,10 @@ export class RolesGuard implements CanActivate {
     // Accept the request when the user holds any one of the declared roles.
     for (const roleName of requiredRoles) {
       // Join the assignment to the role so the check uses the current database state.
-      const assignment = await this.prisma.public.UserRole.include(
-        'role',
-        (role) => role.where({ name: toVarchar(roleName, 64) }),
-      )
-        .where({ userId: user.id })
-        .first();
+      const assignment = await this.prisma.userRole.findFirst({
+        where: { userId: user.id, role: { is: { name: roleName } } },
+        select: { userId: true },
+      });
 
       if (assignment) {
         // A single matching assignment is sufficient; remaining roles need no query.

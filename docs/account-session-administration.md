@@ -33,29 +33,9 @@ the hashed refresh token.
 
 ## Schema rollout
 
-The source contract in `src/prisma/contract.prisma` defines `auth_sessions`,
-the `refresh_sessions.session_id` relationship, and `admin_audit_events`.
-Apply the corresponding migration before deploying an application version
-that depends on these objects. Check the target environment's migration
-history before applying it or planning a further schema change.
-
-The generated migration adds `refresh_sessions.session_id` as a required
-column and checks that `refresh_sessions` is empty before applying it. This
-precondition must hold in every target environment; the migration does not
-backfill existing refresh-session rows. Existing access tokens do not contain
-a session ID and will be rejected after the new strategy is deployed. Since
-the table is empty at migration time, affected users must authenticate again
-to create a new session.
-
-Before applying the migration to a target environment, verify that
-`refresh_sessions` is empty and review the migration:
-
-```bash
-pnpm prisma migration show migrations/app/20261017T0058_admin_account_session_management
-```
-
-Apply it with `pnpm prisma db migrate --db $DATABASE_URL --advance-ref db`
-through the approved process for that environment. Re-emit the contract with
-`pnpm contract:emit` after any further contract changes. Plan the schema and
-application rollout together; do not deploy an application version that
-depends on objects missing from the database.
+The Prisma 7 schema in `prisma/schema.prisma` defines `auth_sessions`, the
+`refresh_sessions.session_id` relationship, and `admin_audit_events`. The
+initial SQL migration is in `prisma/migrations/20261025_init/`. Review the
+target environment's schema and migration history before applying it; this
+initial migration is only for a fresh database. Follow
+[Database and migrations](./database.md) for schema changes and deployment.

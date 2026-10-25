@@ -30,7 +30,7 @@ describe('EmailVerificationService', () => {
       email: user.email,
       purpose: EMAIL_VERIFICATION_PURPOSE,
     },
-    expiresIn: number | string = 60,
+    expiresIn: number = 60,
   ): Promise<string> {
     return jwt.signAsync(payload, {
       secret,

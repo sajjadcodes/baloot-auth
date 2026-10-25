@@ -19,7 +19,7 @@ describe('RolesGuard', () => {
     id: userId,
     clientId,
     status: 'ACTIVE',
-    emailVerifiedAt: new Date().toISOString(),
+    emailVerifiedAt: new Date(),
   };
 
   let guard: RolesGuard;
@@ -44,7 +44,7 @@ describe('RolesGuard', () => {
   beforeEach(() => {
     requiredRoles = ['user'];
     findUser = jest.fn().mockResolvedValue(user);
-    findAssignment = jest.fn().mockResolvedValue({ role: { name: 'user' } });
+    findAssignment = jest.fn().mockResolvedValue({ userId });
     whereRole = jest.fn();
     whereAssignment = jest.fn().mockReturnThis();
     includeRole = jest.fn(
@@ -61,9 +61,14 @@ describe('RolesGuard', () => {
       getAllAndOverride: jest.fn(() => requiredRoles),
     } as unknown as Reflector;
     guard = new RolesGuard(reflector, {
-      public: {
-        User: { where: jest.fn(() => ({ first: findUser })) },
-        UserRole: { include: includeRole },
+      user: { findFirst: jest.fn().mockImplementation(findUser) },
+      userRole: {
+        findFirst: jest.fn(({ where }: { where: Record<string, unknown> }) => {
+          const role = where.role as { is: { name: string } };
+          whereRole({ name: role.is.name });
+          whereAssignment({ userId: where.userId });
+          return findAssignment(role.is.name);
+        }),
       },
     } as unknown as PrismaService);
   });
@@ -73,7 +78,6 @@ describe('RolesGuard', () => {
       guard.canActivate(contextFor({ userId, clientId, sessionId })),
     ).resolves.toBe(true);
 
-    expect(includeRole).toHaveBeenCalledWith('role', expect.any(Function));
     expect(whereRole).toHaveBeenCalledWith({ name: 'user' });
     expect(whereAssignment).toHaveBeenCalledWith({ userId });
   });
@@ -104,7 +108,7 @@ describe('RolesGuard', () => {
     await expect(
       guard.canActivate(contextFor({ userId, clientId, sessionId })),
     ).rejects.toThrow(ForbiddenException);
-    expect(includeRole).not.toHaveBeenCalled();
+    expect(findAssignment).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -119,7 +123,7 @@ describe('RolesGuard', () => {
       await expect(
         guard.canActivate(contextFor({ userId, clientId, sessionId })),
       ).rejects.toThrow(UnauthorizedException);
-      expect(includeRole).not.toHaveBeenCalled();
+      expect(findAssignment).not.toHaveBeenCalled();
     },
   );
 

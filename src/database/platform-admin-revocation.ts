@@ -1,6 +1,6 @@
 import { isEmail } from 'class-validator';
 import { CLIENT_ID_PATTERN } from '../auth/auth.constants.js';
-import { toVarchar } from '../prisma/varchar.js';
+import type { Prisma } from '../generated/prisma/client.js';
 import type { PrismaService } from './prisma.service.js';
 
 export interface PlatformAdminRevocationTarget {
@@ -8,18 +8,16 @@ export interface PlatformAdminRevocationTarget {
   email: string;
 }
 
-export type PlatformAdminRevocationTransaction = Parameters<
-  Parameters<PrismaService['client']['transaction']>[0]
->[0];
+export type PlatformAdminRevocationTransaction = Prisma.TransactionClient;
 
 export async function revokePlatformAdminAssignment(
   transaction: PlatformAdminRevocationTransaction,
   target: PlatformAdminRevocationTarget,
 ): Promise<boolean> {
-  const user = await transaction.orm.public.User.where({
-    clientId: target.clientId,
-    email: toVarchar(target.email, 320),
-  }).first();
+  const user = await transaction.user.findFirst({
+    where: { clientId: target.clientId, email: target.email },
+    select: { id: true },
+  });
 
   if (!user) {
     throw new Error(
@@ -27,24 +25,19 @@ export async function revokePlatformAdminAssignment(
     );
   }
 
-  const role = await transaction.orm.public.Role.where({
-    name: toVarchar('platform_admin', 64),
-  }).first();
+  const role = await transaction.role.findUnique({
+    where: { name: 'platform_admin' },
+    select: { id: true },
+  });
 
   if (!role) {
     return false;
   }
 
-  const assignmentFilter = { userId: user.id, roleId: role.id };
-  const assignment =
-    await transaction.orm.public.UserRole.where(assignmentFilter).first();
-
-  if (!assignment) {
-    return false;
-  }
-
-  await transaction.orm.public.UserRole.where(assignmentFilter).delete();
-  return true;
+  const result = await transaction.userRole.deleteMany({
+    where: { userId: user.id, roleId: role.id },
+  });
+  return result.count > 0;
 }
 
 export function parsePlatformAdminRevocationArgs(

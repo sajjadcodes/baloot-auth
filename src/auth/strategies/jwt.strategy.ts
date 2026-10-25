@@ -63,20 +63,24 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Invalid access token.');
     }
 
-    const session = await this.prisma.public.AuthSession.where({
-      id: payload.sessionId,
-      userId: payload.sub,
-      revokedAt: null,
-    }).first();
+    const session = await this.prisma.authSession.findFirst({
+      where: {
+        id: payload.sessionId,
+        userId: payload.sub,
+        revokedAt: null,
+      },
+    });
 
-    if (!session || Date.parse(session.expiresAt) <= Date.now()) {
+    if (!session || session.expiresAt.getTime() <= Date.now()) {
       throw new UnauthorizedException('Invalid or expired access token.');
     }
 
-    const user = await this.prisma.public.User.where({
-      id: payload.sub,
-      clientId: payload.clientId,
-    }).first();
+    const user = await this.prisma.user.findFirst({
+      where: {
+        id: payload.sub,
+        clientId: payload.clientId,
+      },
+    });
 
     if (!user || user.status !== 'ACTIVE' || !user.emailVerifiedAt) {
       throw new UnauthorizedException('Invalid or expired access token.');

@@ -1,7 +1,7 @@
 # Getting Started
 
 Baloot Auth is a reusable authentication and basic authorization service built
-with NestJS, TypeScript, PostgreSQL, and Prisma ORM 8.
+with NestJS, TypeScript, PostgreSQL, and Prisma ORM 7.
 
 ## Prerequisites
 
@@ -12,7 +12,7 @@ with NestJS, TypeScript, PostgreSQL, and Prisma ORM 8.
 - Access to the environment's approved database and email-delivery
   configuration.
 
-Prisma ORM 8 is currently installed as a release candidate.
+Prisma ORM 7 and its PostgreSQL driver adapter are pinned to stable versions.
 
 ## Install and configure
 
@@ -70,12 +70,14 @@ database credentials into local development configuration.
 
 ## Initialize local application data
 
-The database schema must already be provisioned through the reviewed migration
-process for the target environment. The seed command
+For a fresh local database, apply the committed Prisma migration first. For
+other environments, review the target schema and migration state before
+applying migrations. The seed command
 provisions configured client/origin rows and built-in roles; it does not
 create the database schema.
 
 ```bash
+pnpm db:migrate:dev
 pnpm db:seed
 pnpm start:dev
 ```

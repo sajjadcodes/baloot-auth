@@ -30,32 +30,17 @@ describe('parsePlatformAdminRevocationArgs', () => {
 
     let findUser: jest.Mock;
     let findRole: jest.Mock;
-    let findAssignment: jest.Mock;
-    let deleteAssignment: jest.Mock;
-    let whereUser: jest.Mock;
-    let whereRole: jest.Mock;
-    let whereAssignment: jest.Mock;
+    let deleteAssignments: jest.Mock;
     let transaction: PlatformAdminRevocationTransaction;
 
     beforeEach(() => {
       findUser = jest.fn().mockResolvedValue(user);
       findRole = jest.fn().mockResolvedValue(role);
-      findAssignment = jest.fn().mockResolvedValue({ userId: user.id });
-      deleteAssignment = jest.fn().mockResolvedValue(undefined);
-      whereUser = jest.fn(() => ({ first: findUser }));
-      whereRole = jest.fn(() => ({ first: findRole }));
-      whereAssignment = jest.fn(() => ({
-        first: findAssignment,
-        delete: deleteAssignment,
-      }));
+      deleteAssignments = jest.fn().mockResolvedValue({ count: 1 });
       transaction = {
-        orm: {
-          public: {
-            User: { where: whereUser },
-            Role: { where: whereRole },
-            UserRole: { where: whereAssignment },
-          },
-        },
+        user: { findFirst: findUser },
+        role: { findUnique: findRole },
+        userRole: { deleteMany: deleteAssignments },
       } as unknown as PlatformAdminRevocationTransaction;
     });
 
@@ -64,20 +49,18 @@ describe('parsePlatformAdminRevocationArgs', () => {
         revokePlatformAdminAssignment(transaction, target),
       ).resolves.toBe(true);
 
-      expect(whereUser).toHaveBeenCalledWith({
-        clientId: target.clientId,
-        email: target.email,
+      expect(findUser).toHaveBeenCalledWith({
+        where: { clientId: target.clientId, email: target.email },
+        select: { id: true },
       });
-      expect(whereRole).toHaveBeenCalledWith({ name: 'platform_admin' });
-      expect(whereAssignment).toHaveBeenNthCalledWith(1, {
-        userId: user.id,
-        roleId: role.id,
+      expect(findRole).toHaveBeenCalledWith({
+        where: { name: 'platform_admin' },
+        select: { id: true },
       });
-      expect(whereAssignment).toHaveBeenNthCalledWith(2, {
-        userId: user.id,
-        roleId: role.id,
+      expect(deleteAssignments).toHaveBeenCalledWith({
+        where: { userId: user.id, roleId: role.id },
       });
-      expect(deleteAssignment).toHaveBeenCalledTimes(1);
+      expect(deleteAssignments).toHaveBeenCalledTimes(1);
     });
 
     it('fails explicitly when the account is missing without deleting an assignment', async () => {
@@ -88,9 +71,8 @@ describe('parsePlatformAdminRevocationArgs', () => {
       ).rejects.toThrow(
         `No account "${target.email}" was found for client "${target.clientId}".`,
       );
-      expect(whereRole).not.toHaveBeenCalled();
-      expect(whereAssignment).not.toHaveBeenCalled();
-      expect(deleteAssignment).not.toHaveBeenCalled();
+      expect(findRole).not.toHaveBeenCalled();
+      expect(deleteAssignments).not.toHaveBeenCalled();
     });
 
     it('returns false without deleting when the role is missing', async () => {
@@ -99,21 +81,18 @@ describe('parsePlatformAdminRevocationArgs', () => {
       await expect(
         revokePlatformAdminAssignment(transaction, target),
       ).resolves.toBe(false);
-      expect(whereAssignment).not.toHaveBeenCalled();
-      expect(deleteAssignment).not.toHaveBeenCalled();
+      expect(deleteAssignments).not.toHaveBeenCalled();
     });
 
     it('returns false without deleting when the targeted assignment is missing', async () => {
-      findAssignment.mockResolvedValue(null);
+      deleteAssignments.mockResolvedValue({ count: 0 });
 
       await expect(
         revokePlatformAdminAssignment(transaction, target),
       ).resolves.toBe(false);
-      expect(whereAssignment).toHaveBeenCalledWith({
-        userId: user.id,
-        roleId: role.id,
+      expect(deleteAssignments).toHaveBeenCalledWith({
+        where: { userId: user.id, roleId: role.id },
       });
-      expect(deleteAssignment).not.toHaveBeenCalled();
     });
   });
 

@@ -41,13 +41,12 @@ Keep secrets in the host's protected environment configuration, not in Git or
 build artifacts. Do not put production credentials in a developer workstation
 `.env` file.
 
-The current Prisma ORM 8 RC configuration uses `DATABASE_URL` for application
-queries and migration tooling. It does not currently configure a separate
-direct migration URL. Whether Supabase's pooled or direct connection should be
-used for each operation depends on the connection mode supported by the
-deployed Prisma version and hosting environment; verify that before setting
-the production value. Do not invent a `DIRECT_URL` variable or assume the
-application reads it.
+The application uses Prisma ORM 7 with the PostgreSQL driver adapter and reads
+`DATABASE_URL` for its runtime connection. Prisma CLI commands also read that
+variable through `prisma.config.ts`. Whether Supabase's pooled or direct
+connection should be used for each operation depends on the connection mode
+supported by the hosting environment; verify that before setting the
+production value.
 
 ## Build and process
 
@@ -74,8 +73,7 @@ provider's conventions.
 
 ## Database and migration rollout
 
-The project already uses PostgreSQL and includes committed Prisma ORM 8 RC
-contract artifacts and migrations. Review
+The project uses a Prisma ORM 7 schema and committed SQL migrations. Review
 [Database and migrations](./database.md) before changing the schema.
 
 Before connecting a Supabase project:
@@ -88,12 +86,12 @@ Before connecting a Supabase project:
 4. Inspect the database and migration history before applying anything.
 5. Back up any data that must be retained and test the migration against a
    suitable non-production database first.
-6. Apply only reviewed migrations through the approved release process.
+6. Apply only reviewed migrations with `pnpm db:migrate:deploy`.
 
-Do not reset, recreate, or assume the database is empty. The
-account/session-administration migration requires `refresh_sessions` to be
-empty before adding its required `session_id` column. Review that migration's
-precondition and impact before applying it to any populated database.
+Do not reset or recreate a database containing data. The committed initial
+migration creates the complete schema from the Prisma 7 model. The current
+Supabase database is a fresh test database; do not assume another target is
+empty or treat this baseline as a migration for an existing populated schema.
 
 ## Deployment checklist
 

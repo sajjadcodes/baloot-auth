@@ -1,50 +1,65 @@
-# Database and Migrations
+# Database and migrations
 
-Baloot Auth uses PostgreSQL and Prisma ORM 8's PostgreSQL contract and runtime.
-It does not use Prisma 7's generated `PrismaClient` or driver adapter.
-Supabase is the planned managed PostgreSQL provider. Confirm its current
-connection guidance against the Prisma runtime version used by this project
-before choosing a connection string or pooler mode. The application and
-migration tooling currently read `DATABASE_URL`; a separate direct migration
-URL is not configured.
+The application uses stable Prisma ORM 7 with the PostgreSQL driver adapter.
+The canonical schema is [`prisma/schema.prisma`](../prisma/schema.prisma), and
+the Prisma CLI configuration is [`prisma.config.ts`](../prisma.config.ts).
+Both runtime connections and CLI migration commands read `DATABASE_URL`.
 
-## Contract
+## Local development
 
-The source data contract is [contract.prisma](../src/prisma/contract.prisma).
-The emitted `contract.json` and `contract.d.ts` artifacts are used by the
-runtime. After an approved contract change, emit updated artifacts with:
+Install dependencies and set `DATABASE_URL` in an untracked `.env` file.
+Apply the committed migration, generate the Prisma Client, and seed the local
+database:
 
 ```bash
-pnpm contract:emit
+pnpm db:migrate:dev
+pnpm db:generate
+pnpm db:seed
 ```
 
-Review the emitted diff and commit it together with the source contract and
-the reviewed migration artifacts.
+The `build` command also runs `prisma generate` before compiling the NestJS
+application.
 
-## Migration control
+## Changing the schema
 
-Treat database migrations as reviewed, data-changing operations. Follow the
-approval and release process for the target environment; do not bypass it
-with another tool or script. Never reset or apply an unreviewed migration to
-a database containing data.
+1. Update `prisma/schema.prisma`.
+2. Create and apply a development migration with `pnpm db:migrate:dev`.
+   Give the migration a descriptive name when prompted.
+3. Review the generated SQL under `prisma/migrations/`, then test the
+   application and migration against a non-production database.
+4. Commit the schema and its migration together.
 
-The normal workflow is:
+Do not edit an already-applied migration to change a database. Add a new
+migration instead. `pnpm db:generate` refreshes the client after schema
+changes; it does not alter the database.
 
-1. Update the contract and explain the schema impact.
-2. Propose a Prisma ORM 8 migration planning command and describe its effect.
-3. Obtain approval from the authorized maintainers before creating or
-   executing the migration.
-4. Review the migration operations and any data transformation.
-5. Test against an appropriate non-production database before deployment.
-6. Apply through the environment's approved release process.
+## Deployment
 
-For the planned Supabase deployment, first inspect the target project's
-existing schema and migration history. Select a connection method supported
-by both Supabase and the installed Prisma runtime, and verify the complete
-migration process in a non-production database. Never use a production reset
-or assume the target contains no data.
+Use `pnpm db:migrate:deploy` to apply committed migrations in a deployment
+environment. Run it as a deployment/release step before starting application
+instances that require the changed schema. Review the target database and
+migration history first; do not use `migrate dev` in deployment.
 
-For account/session administration, see
-[the rollout notes](./account-session-administration.md). In particular, the
-migration requires `refresh_sessions` to be empty when adding its required
-`session_id` column.
+The committed `20261025_init` migration creates the schema represented by the
+current Prisma 7 model. It is intended for a fresh database. Do not apply it
+to a populated database or use it to recreate a schema whose previous
+migration history was removed. Existing environments need a reviewed
+baseline/adoption plan that matches their actual schema before using this
+migration history.
+
+The Supabase database currently used for testing is described as empty. Even
+so, do not apply migrations to it automatically; run the deployment command
+only after confirming the configured `DATABASE_URL` points to the intended
+test project.
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `pnpm db:generate` | Generate Prisma Client from the Prisma 7 schema. |
+| `pnpm db:migrate:dev` | Create/apply migrations in local development. |
+| `pnpm db:migrate:deploy` | Apply committed migrations without creating new ones. |
+| `pnpm db:seed` | Seed configured clients/origins and built-in roles. |
+
+Never commit database credentials or use production credentials for local
+development.
