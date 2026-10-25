@@ -100,7 +100,8 @@ transaction. Session-bound access tokens are invalidated immediately.
 
 To add an origin, add its exact scheme, hostname, and optional port to
 `CORS_ORIGINS` and to that client's origins in `SEED_CLIENTS_JSON`, then run
-`pnpm db:seed` against the intended database and restart/redeploy the service.
+`pnpm db:seed` against the intended database and restart/redeploy the service
+through the environment's approved release process.
 Do not create another client just to add a frontend origin. See
 [Getting started](./getting-started.md) for setup and
 [Security](./security.md) for origin and cookie requirements.

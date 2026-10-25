@@ -77,3 +77,7 @@ production credentials or real user accounts for local testing.
 The schema migration currently requires `refresh_sessions` to be empty at
 migration time. See [Database and migrations](./database.md) before testing a
 fresh or upgraded environment.
+
+For a hosted deployment, repeat the applicable API smoke tests against the
+deployed HTTPS endpoint using synthetic accounts and an approved test client.
+Do not run data-changing test cases against real user accounts.

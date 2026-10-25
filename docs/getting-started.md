@@ -7,7 +7,8 @@ with NestJS, TypeScript, PostgreSQL, and Prisma ORM 8.
 
 - Node.js compatible with the installed project dependencies.
 - pnpm.
-- PostgreSQL.
+- PostgreSQL (local for development; Supabase is the planned managed provider
+  for deployment).
 - Access to the environment's approved database and email-delivery
   configuration.
 
@@ -21,10 +22,10 @@ Install dependencies:
 pnpm install
 ```
 
-Copy `.env.example` to an untracked `.env`. Set `DATABASE_URL` to the intended
-database and provide a cryptographically random `JWT_ACCESS_SECRET` of at
-least 32 characters. Never commit secrets or use production credentials in a
-local development environment.
+Copy `.env.example` to an untracked `.env`. Set `DATABASE_URL` to a local
+development database and provide a cryptographically random
+`JWT_ACCESS_SECRET` of at least 32 characters. Never commit secrets or use
+production credentials in a local development environment.
 
 Important configuration:
 
@@ -62,6 +63,10 @@ SEED_CLIENTS_JSON=[{"id":"00000000-0000-4000-8000-000000000001","name":"Local ap
 Keep deployment-specific values in the environment's protected configuration,
 not in Git. See [Security](./security.md) and
 [Platform administrator operations](./platform-admin-operations.md).
+
+For the planned hosted architecture and deployment readiness checklist, see
+[Infrastructure and deployment](./infrastructure.md). Do not copy hosted
+database credentials into local development configuration.
 
 ## Initialize local application data
 
