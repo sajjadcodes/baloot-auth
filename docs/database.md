@@ -3,7 +3,8 @@
 The application uses stable Prisma ORM 7 with the PostgreSQL driver adapter.
 The canonical schema is [`prisma/schema.prisma`](../prisma/schema.prisma), and
 the Prisma CLI configuration is [`prisma.config.ts`](../prisma.config.ts).
-Both runtime connections and CLI migration commands read `DATABASE_URL`.
+The runtime and database migration commands read `DATABASE_URL`. Client
+generation does not require a database connection.
 
 ## Local development
 
@@ -18,7 +19,8 @@ pnpm db:seed
 ```
 
 The `build` command also runs `prisma generate` before compiling the NestJS
-application.
+application. A production `DATABASE_URL` is therefore not required during
+image building; provide it in the running service's protected environment.
 
 ## Changing the schema
 

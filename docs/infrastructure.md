@@ -42,8 +42,10 @@ build artifacts. Do not put production credentials in a developer workstation
 `.env` file.
 
 The application uses Prisma ORM 7 with the PostgreSQL driver adapter and reads
-`DATABASE_URL` for its runtime connection. Prisma CLI commands also read that
-variable through `prisma.config.ts`. Whether Supabase's pooled or direct
+`DATABASE_URL` for its runtime connection. Prisma CLI commands use that
+variable through `prisma.config.ts` when running migrations. The build only
+generates Prisma Client and does not need database credentials. Whether
+Supabase's pooled or direct
 connection should be used for each operation depends on the connection mode
 supported by the hosting environment; verify that before setting the
 production value.
