@@ -255,24 +255,68 @@ pnpm run start:prod
 ```
 
 The production entry point is `dist/src/main.js`. The NestJS bootstrap reads
-`PORT` through validated application configuration and enables shutdown
-hooks. In production this application currently binds to `127.0.0.1`. Before
-putting Nginx or the gateway in a separate container/service, change the
-service to bind to an interface reachable on the private container network
-(typically `0.0.0.0`) and keep it inaccessible from the public internet except
-through the intended proxy path.
+`PORT` through validated application configuration, binds to `0.0.0.0` so
+other containers can reach it, and enables shutdown hooks. Keep the service
+private behind the store gateway and Nginx; do not publish its container port
+to the public internet.
 
-This repository currently has no Dockerfile, Nginx configuration, or gateway
-application. Build and deploy those as explicit components; ensure the
-production image runs `pnpm run build` so Prisma Client is generated from the
-committed schema before Nest is compiled.
+This repository includes a multi-stage `Dockerfile` and `.dockerignore` for
+the Baloot Auth service. Build and run it using the Docker CLI:
 
-The Baloot Auth image should install dependencies from the lockfile, build,
-and start with `pnpm run start:prod`. Do not copy a developer's local `dist`
-or generated Prisma directory into the image as a substitute for the build.
-Use Docker multi-stage build outputs that retain all generated Prisma
-JavaScript files, including `dist/src/generated/prisma/internal/` and
-`models/`.
+```powershell
+docker build -t baloot-auth:local .
+docker run --rm --name baloot-auth `
+  --env-file .env `
+  -e PORT=3000 `
+  -p 127.0.0.1:3000:3000 `
+  baloot-auth:local
+```
+
+The local run command binds the published port only to loopback. In the
+deployed topology, attach the service to the private container network shared
+with the gateway and do not publish its port publicly. Supply required runtime
+configuration through the deployment platform's protected environment, not
+Docker build arguments or image layers.
+
+For a local Docker Engine network without Compose or a GUI, create a private
+network and run Baloot Auth without publishing a host port:
+
+```powershell
+docker network create store-internal
+docker run -d --name baloot-auth `
+  --network store-internal `
+  --env-file .env `
+  -e PORT=3000 `
+  baloot-auth:local
+docker logs -f baloot-auth
+```
+
+Other containers on `store-internal` can reach the service at
+`http://baloot-auth:3000`. Stop and remove this local container with
+`docker stop baloot-auth` and `docker rm baloot-auth`. Render's service
+networking is configured in Render; a local Docker network does not extend to
+deployed services.
+
+The image uses Node.js 22, installs dependencies from the lockfile, generates
+Prisma Client as part of `pnpm run build`, and runs as the unprivileged `node`
+user. Its runtime stage contains production dependencies and the complete
+`dist/` output, including every generated Prisma JavaScript module. The
+`.dockerignore` excludes local environment files, node_modules, generated
+client output, and existing build artifacts.
+
+The Dockerfile pins pnpm for a repeatable image build. Update that version
+deliberately when changing the repository's package-manager version.
+
+Docker Desktop is not required by the project. `docker build` and `docker run`
+need a Docker-compatible daemon, however. On Windows, use Docker Engine in
+WSL2/Linux or a remote Docker Engine and point the Docker CLI at that daemon.
+Without a daemon, build the image in CI or on the deployment platform; the
+Docker CLI alone cannot build or run containers.
+
+Database migrations are a release operation, not part of container startup.
+Run `pnpm db:migrate:deploy` from an approved deployment job against the
+intended `DATABASE_URL` before releasing application code that needs the
+schema. Do not mount `.env` into an image or bake secrets into it.
 
 Nginx should route the public `/auth/...` path to the gateway without
 stripping or adding a path prefix. This is required because the refresh cookie
@@ -307,6 +351,8 @@ migration for an existing populated schema.
 - [ ] Confirm current Vercel frontend domain/preview behavior and Render
       Docker, build, start, port, health-check,
       networking, and plan requirements using official documentation.
+- [ ] Build the Baloot Auth image from this repository's Dockerfile and deploy
+      it on a private network accessible to the store gateway.
 - [ ] Build and deploy the Nginx and NestJS gateway components; keep backend
       service addresses private.
 - [ ] Provision private RabbitMQ access for publishers/consumers, including

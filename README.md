@@ -65,6 +65,11 @@ See [Infrastructure](./docs/infrastructure.md) for the Vercel, Render,
 Docker, Nginx, and Neon deployment architecture, configuration boundaries,
 and rollout checklist.
 
+Build the Baloot Auth container with the Docker CLI using
+`docker build -t baloot-auth:local .`. See the infrastructure guide for
+runtime configuration, networking, migration, and Docker Engine requirements;
+Docker Desktop is not required.
+
 ## Project Principles
 
 - Security-first, client-scoped authentication.
