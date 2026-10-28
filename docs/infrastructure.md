@@ -13,9 +13,9 @@ Browser -> Vercel (Next.js frontend)
 
 - **Frontend:** Next.js application deployed on Vercel.
 - **API edge:** Nginx on Render routes `/auth/*` to the NestJS API gateway.
-- **API gateway:** A separate NestJS application that proxies auth requests
-  to Baloot Auth, supplies the approved client ID, and preserves origin and
-  cookie headers.
+- **Store API gateway:** An application-specific NestJS gateway (for example,
+  `store-api-gateway`) that proxies requests to reusable Baloot services,
+  supplies the approved client ID, and preserves origin and cookie headers.
 - **Authentication service:** This repository's NestJS Baloot Auth service.
 - **Database:** Managed PostgreSQL hosted by Neon.
 - **API hosting:** Render, using Docker for Nginx and the NestJS services.
@@ -33,25 +33,26 @@ multi-container Docker Compose application.
 ## Store service boundaries
 
 These are the planned domain boundaries for a single-merchant store selling
-its own products. They do not all need to be separate deployable applications
-in the first release; keep clear modules and split services when independent
-scaling, ownership, or deployment needs justify it.
+its own products. The reusable, open-source Baloot services are the services
+prefixed `baloot-*`; the store API gateway is specific to this ecommerce
+application and is not named or published as a reusable Baloot service. These
+do not all need to be separate deployable applications in the first release;
+keep clear modules and split services when independent scaling, ownership, or
+deployment needs justify it.
 
 1. **`baloot-auth`** — customer authentication, sessions, and roles. This is
    the service in this repository.
-2. **`baloot-gateway`** — public API entry point that routes requests to
-   internal services and applies shared request policies.
-3. **`baloot-catalog`** — product descriptions, variants, categories, SKUs,
+2. **`baloot-catalog`** — product descriptions, variants, categories, SKUs,
    and publication state.
-4. **`baloot-inventory`** — stock levels, reservations, and adjustments.
-5. **`baloot-order`** — carts, checkout, coupon and discount rules, tax and
+3. **`baloot-inventory`** — stock levels, reservations, and adjustments.
+4. **`baloot-order`** — carts, checkout, coupon and discount rules, tax and
    price calculation, order lifecycle, and fulfillment/shipping status and
    tracking. Keep cart, tax, discounts, coupons, and fulfillment as modules
    inside this service rather than separate services.
-6. **`baloot-pay`** — payment-provider integration, payment state, refunds,
+5. **`baloot-pay`** — payment-provider integration, payment state, refunds,
    and signed provider webhooks. It reports verified payment outcomes to
    `baloot-order`; the order service owns order-state transitions.
-7. **`baloot-relay`** — transactional email and other notifications, such as
+6. **`baloot-relay`** — transactional email and other notifications, such as
    verification messages, order confirmations, shipping updates, and refunds.
 
 Keep ownership clear: catalog owns product information, inventory owns stock,
@@ -64,9 +65,12 @@ system grows.
 ## Shared platform services
 
 These support the business services; they are not additional `baloot-*`
-domain services:
+domain services. The store-specific API gateway is an application component,
+not part of the reusable Baloot service suite:
 
 - **Nginx** — public API ingress and routing.
+- **Store API gateway** — ecommerce-specific NestJS BFF/API composition and
+  routing to internal services.
 - **Next.js on Vercel** — customer storefront.
 - **Docker and Render** — deployment for the API-side services.
 - **Neon PostgreSQL** — persistent storage. Keep service data ownership clear;

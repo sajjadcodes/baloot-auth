@@ -1,8 +1,10 @@
 # Next.js frontend handoff
 
-This guide describes how a Next.js application should integrate with Baloot
-Auth through the planned NestJS API gateway. The frontend must not call the
-Baloot Auth service directly in production.
+This guide describes how a Next.js application should integrate with reusable
+Baloot Auth through the ecommerce application's NestJS API gateway (for
+example, `store-api-gateway`). This gateway is application-specific, not a
+reusable `baloot-*` service. The frontend must not call the Baloot Auth
+service directly in production.
 
 ## Request path
 

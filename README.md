@@ -11,10 +11,10 @@ administrator operations.
 ## Deployment and integration
 
 The deployment uses a Next.js frontend on Vercel, an Nginx reverse proxy and
-NestJS API gateway on Render, and this Baloot Auth NestJS service, with Neon
-for managed PostgreSQL and RabbitMQ for asynchronous service messaging. The
-frontend and gateway are separate applications; this repository contains
-only Baloot Auth. See the
+store-specific NestJS API gateway on Render, and reusable Baloot services
+such as Baloot Auth, with Neon for managed PostgreSQL and RabbitMQ for
+asynchronous service messaging. The frontend and store gateway are
+application-specific; this repository contains only Baloot Auth. See the
 [frontend handoff](./docs/frontend-handoff.md) and
 [infrastructure guide](./docs/infrastructure.md) for the integration
 contract, planned store service boundaries, and Docker deployment.
