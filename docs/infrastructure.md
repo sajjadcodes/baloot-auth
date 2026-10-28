@@ -26,6 +26,55 @@ before choosing whether Nginx, the gateway, and Baloot Auth are separate
 services or co-located containers. Do not assume Render runs a
 multi-container Docker Compose application.
 
+## Store service boundaries
+
+These are the planned domain boundaries for a single-merchant store selling
+its own products. They do not all need to be separate deployable applications
+in the first release; keep clear modules and split services when independent
+scaling, ownership, or deployment needs justify it.
+
+1. **`baloot-auth`** — customer authentication, sessions, and roles. This is
+   the service in this repository.
+2. **`baloot-gateway`** — public API entry point that routes requests to
+   internal services and applies shared request policies.
+3. **`baloot-catalog`** — product descriptions, variants, categories, SKUs,
+   and publication state.
+4. **`baloot-inventory`** — stock levels, reservations, and adjustments.
+5. **`baloot-order`** — carts, checkout, coupon and discount rules, tax and
+   price calculation, order lifecycle, and fulfillment/shipping status and
+   tracking. Keep cart, tax, discounts, coupons, and fulfillment as modules
+   inside this service rather than separate services.
+6. **`baloot-pay`** — payment-provider integration, payment state, refunds,
+   and signed provider webhooks. It reports verified payment outcomes to
+   `baloot-order`; the order service owns order-state transitions.
+7. **`baloot-relay`** — transactional email and other notifications, such as
+   verification messages, order confirmations, shipping updates, and refunds.
+
+Keep ownership clear: catalog owns product information, inventory owns stock,
+order owns the purchase and its lifecycle, and pay owns provider-specific
+payment state. Snapshot product details, prices, discounts, tax, and totals on
+each order so later catalog or pricing changes do not alter purchase history.
+Use durable, idempotent event handling for cross-service effects as the
+system grows.
+
+## Shared platform services
+
+These support the business services; they are not additional `baloot-*`
+domain services:
+
+- **Nginx** — public API ingress and routing.
+- **Next.js on Vercel** — customer storefront.
+- **Docker and Render** — deployment for the API-side services.
+- **Neon PostgreSQL** — persistent storage. Keep service data ownership clear;
+  do not let services directly modify another service's tables.
+- **Metrics and dashboards** — instrument each service and collect metrics
+  with Prometheus; visualize and alert with Grafana. An OpenTelemetry
+  Collector is optional when a shared telemetry pipeline is useful. This
+  does not require a separate metrics business service.
+- **Queue/event transport, logs, tracing, secrets management, and backups** —
+  add the operational components needed for reliable asynchronous work and
+  production support.
+
 ## Application configuration
 
 Baloot Auth reads and validates its configuration from environment variables.

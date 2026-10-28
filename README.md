@@ -16,7 +16,7 @@ for managed PostgreSQL. The frontend and gateway are separate applications;
 this repository contains only Baloot Auth. See the
 [frontend handoff](./docs/frontend-handoff.md) and
 [infrastructure guide](./docs/infrastructure.md) for the integration
-contract and planned Docker deployment.
+contract, planned store service boundaries, and Docker deployment.
 
 ## Documentation
 

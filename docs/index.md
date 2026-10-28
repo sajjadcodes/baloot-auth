@@ -9,8 +9,8 @@ Each guide covers one area of Baloot Auth:
 - [Security](./security.md) — request-origin protection, token handling, roles, and admin authorization.
 - [Database and migrations](./database.md) — Prisma ORM 7 schema, client generation, and migration workflow.
 - [Infrastructure and deployment](./infrastructure.md) — Docker deployment
-  architecture with Vercel, Render, Nginx, NestJS services, and Neon
-  PostgreSQL.
+  architecture, planned store service boundaries, and deployment with Vercel,
+  Render, Nginx, NestJS, and Neon PostgreSQL.
 - [Testing](./testing.md) — unit tests, build and lint checks, plus a post-migration smoke-test checklist.
 - [Platform administrator operations](./platform-admin-operations.md) — securely grant or revoke `platform_admin`.
 - [Account and session administration](./account-session-administration.md) — admin account/session endpoints, audit behavior, and schema notes.
