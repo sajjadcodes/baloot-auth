@@ -87,12 +87,29 @@ not part of the reusable Baloot service suite:
 
 ## RabbitMQ event-driven integration
 
-Use RabbitMQ when a service needs to announce a committed business change or
-request work from another service without making the originating HTTP request
-wait for every downstream operation. Keep synchronous request/response calls
-for operations that must return an immediate result, such as a catalog read
-or a checkout validation result. Do not use the broker as a substitute for
-service APIs or as a shared database.
+Use **HTTP/REST for synchronous request/response** when the caller needs a
+result before it can continue. Use **RabbitMQ for asynchronous events and
+commands** when work can finish later, should be retried durably, or multiple
+services need to react to a committed business fact. Keep synchronous service
+APIs for immediate results such as catalog reads, auth checks, and checkout
+validation. Do not use the broker as a substitute for service APIs or as a
+shared database.
+
+Typical request path:
+
+1. The Vercel frontend calls the public Nginx URL; Nginx forwards the request
+   to the store-specific API gateway.
+2. The gateway makes synchronous HTTP calls to the service that owns the
+   requested operation and returns its response. For example, it forwards
+   login and `/auth/me` to `baloot-auth`.
+3. If an operation commits a business change that requires follow-up, the
+   owning service publishes an event through RabbitMQ. Consumers process that
+   work independently and do not hold the frontend request open for
+   notifications or unrelated downstream actions.
+
+Do not publish an event for an uncommitted database change. Use an outbox and
+idempotent consumers as described under
+[Reliability requirements](#reliability-requirements).
 
 ### Service responsibilities
 
