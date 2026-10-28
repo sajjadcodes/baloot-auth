@@ -29,6 +29,12 @@ origin belongs to the active client selected by `X-Client-Id`. This is an
 origin-based CSRF defense independent of CORS enforcement. CORS alone is not
 the security check.
 
+When a NestJS gateway proxies browser requests, it must forward the original
+`Origin`, `Cookie`, and configured `X-Client-Id` to Baloot Auth. Do not replace
+the browser's origin with an internal service origin. Configure the exact
+public frontend origin both in `CORS_ORIGINS` and in that client's registered
+allowed origins.
+
 Browser JavaScript cannot arbitrarily set the `Origin` header, but
 non-browser callers can. Neither `Origin` nor `X-Client-Id` is proof of
 identity. This defense does not protect against XSS on a trusted origin.
@@ -72,9 +78,15 @@ and [Account and session administration](./account-session-administration.md).
 - Do not commit `.env` values, database URLs, or API credentials.
 - Keep host and database credentials in their respective protected
   configuration systems; do not include them in build artifacts or logs.
-- For the Render and Neon deployment, verify current provider-specific
-  ingress, TLS, database connection, and plan guidance
-  before configuring production.
+- For the Docker deployment, expose only Nginx publicly; keep the gateway and
+  Baloot Auth reachable only through the intended private network. Do not
+  publish the database port.
+- Preserve `Set-Cookie` and `Cookie` headers through every proxy. Never log
+  cookie values or return authentication tokens to frontend JavaScript.
+- For the Vercel, Render, and Neon deployment, verify current provider-specific
+  ingress, TLS, database connection, and plan guidance before configuring
+  production. Do not rely on Vercel preview domains as trusted origins unless
+  each exact origin is intentionally approved and provisioned.
 - Configure exact trusted frontend origins globally and per client.
 - Keep cookies HttpOnly and do not store tokens in browser storage.
 - Rate-limit public authentication endpoints and monitor the service's safe

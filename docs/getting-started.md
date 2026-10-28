@@ -53,12 +53,17 @@ Use one stable UUID per client. Client IDs are public identifiers, not secrets.
 The backend's global `CORS_ORIGINS` values and each client's database origin
 allowlist must both include an origin for browser requests to work.
 
-Example local-only configuration:
+Example local-only configuration for a Next.js frontend using its default
+development origin:
 
 ```dotenv
-CORS_ORIGINS=http://localhost:5173
-SEED_CLIENTS_JSON=[{"id":"00000000-0000-4000-8000-000000000001","name":"Local app","origins":["http://localhost:5173"]}]
+CORS_ORIGINS=http://localhost:3000
+SEED_CLIENTS_JSON=[{"id":"00000000-0000-4000-8000-000000000001","name":"Local app","origins":["http://localhost:3000"]}]
 ```
+
+If Baloot Auth runs on the same machine, assign it a different `PORT` from
+Next.js. When local Nginx uses another public origin or port, allowlist that
+browser-visible origin instead.
 
 Keep deployment-specific values in the environment's protected configuration,
 not in Git. See [Security](./security.md) and
@@ -67,6 +72,12 @@ not in Git. See [Security](./security.md) and
 For the hosted architecture and deployment checklist, see
 [Infrastructure and deployment](./infrastructure.md). Do not copy hosted
 database credentials into local development configuration.
+
+For frontend work, follow the
+[Next.js frontend handoff](./frontend-handoff.md). The browser should call the
+public Nginx `/auth/...` route through the NestJS gateway, not the Baloot Auth
+service directly. In the planned setup, the gateway supplies the registered
+client ID; the browser origin must still match the Baloot Auth allowlists.
 
 ## Initialize local application data
 

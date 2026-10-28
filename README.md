@@ -8,11 +8,15 @@ password reset, HttpOnly cookie authentication, rotating refresh tokens,
 revocable sessions, role-based authorization, and same-client platform
 administrator operations.
 
-## Hosting
+## Deployment and integration
 
-The NestJS backend is hosted on Render and uses Neon for managed PostgreSQL.
-The application remains a backend-only service; no frontend is included.
-Local development remains supported.
+The deployment uses a Next.js frontend on Vercel, an Nginx reverse proxy and
+NestJS API gateway on Render, and this Baloot Auth NestJS service, with Neon
+for managed PostgreSQL. The frontend and gateway are separate applications;
+this repository contains only Baloot Auth. See the
+[frontend handoff](./docs/frontend-handoff.md) and
+[infrastructure guide](./docs/infrastructure.md) for the integration
+contract and planned Docker deployment.
 
 ## Documentation
 
@@ -56,8 +60,9 @@ See [Testing](./docs/testing.md) for focused test commands and the manual
 smoke-test checklist. See [Database and migrations](./docs/database.md) before
 making schema or database changes.
 
-See [Infrastructure](./docs/infrastructure.md) for the Render and Neon
-deployment architecture, configuration boundaries, and rollout checklist.
+See [Infrastructure](./docs/infrastructure.md) for the Vercel, Render,
+Docker, Nginx, and Neon deployment architecture, configuration boundaries,
+and rollout checklist.
 
 ## Project Principles
 

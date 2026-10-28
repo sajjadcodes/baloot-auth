@@ -78,6 +78,9 @@ The initial migration creates the current schema and is intended only for a
 fresh database. See [Database and migrations](./database.md) before applying
 migrations to a fresh or existing environment.
 
-For a hosted deployment, repeat the applicable API smoke tests against the
-deployed HTTPS endpoint using synthetic accounts and an approved test client.
-Do not run data-changing test cases against real user accounts.
+For deployment, run the browser smoke tests from the Vercel production domain
+through the public Render Nginx URL and gateway, using synthetic accounts and
+an approved test client. Confirm
+that `/auth/refresh` receives the refresh cookie and that login, refresh, and
+logout preserve separate `Set-Cookie` headers through every proxy. Do not run
+data-changing test cases against real user accounts.

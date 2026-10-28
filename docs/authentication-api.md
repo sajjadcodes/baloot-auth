@@ -26,6 +26,11 @@ return a safe message and status code.
 Swagger contains the current DTO validation rules, headers, and endpoint
 details.
 
+In the planned deployment, the browser calls the public Nginx URL and the
+NestJS API gateway forwards auth requests to this service. Keep the public
+auth path as `/auth/...` so the refresh cookie's `Path=/auth` is sent by the
+browser. See [Frontend handoff](./frontend-handoff.md) for the proxy contract.
+
 ## Client and origin headers
 
 Auth requests are scoped to an active registered client using the public
@@ -98,7 +103,9 @@ transaction. Session-bound access tokens are invalidated immediately.
 
 ## Client origins
 
-To add an origin, add its exact scheme, hostname, and optional port to
+For the gateway deployment, use the public frontend origin (the browser's
+origin), not an internal Docker service name, Nginx upstream, or gateway
+container address. To add an origin, add its exact scheme, hostname, and optional port to
 `CORS_ORIGINS` and to that client's origins in `SEED_CLIENTS_JSON`, then run
 `pnpm db:seed` against the intended database and restart/redeploy the service
 through the environment's approved release process.

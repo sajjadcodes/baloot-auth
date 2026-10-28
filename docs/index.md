@@ -4,9 +4,13 @@ Each guide covers one area of Baloot Auth:
 
 - [Getting started](./getting-started.md) — prerequisites, configuration, local setup, and running the service.
 - [Authentication API](./authentication-api.md) — endpoints, browser cookies, verification, password reset, and client origins.
+- [Frontend handoff](./frontend-handoff.md) — integrate a Next.js frontend
+  through the NestJS API gateway and Nginx.
 - [Security](./security.md) — request-origin protection, token handling, roles, and admin authorization.
 - [Database and migrations](./database.md) — Prisma ORM 7 schema, client generation, and migration workflow.
-- [Infrastructure and deployment](./infrastructure.md) — Render application hosting and Neon PostgreSQL architecture.
+- [Infrastructure and deployment](./infrastructure.md) — Docker deployment
+  architecture with Vercel, Render, Nginx, NestJS services, and Neon
+  PostgreSQL.
 - [Testing](./testing.md) — unit tests, build and lint checks, plus a post-migration smoke-test checklist.
 - [Platform administrator operations](./platform-admin-operations.md) — securely grant or revoke `platform_admin`.
 - [Account and session administration](./account-session-administration.md) — admin account/session endpoints, audit behavior, and schema notes.
