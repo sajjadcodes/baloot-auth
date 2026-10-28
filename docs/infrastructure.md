@@ -6,7 +6,9 @@ The planned production request path is:
 
 ```text
 Browser -> Vercel (Next.js frontend)
-       \-> Render (Nginx -> NestJS API gateway -> Baloot Auth) -> Neon PostgreSQL
+       \-> Render (Nginx -> NestJS API gateway -> domain services)
+                                      domain services <-> RabbitMQ
+                                      data owners ----> Neon PostgreSQL
 ```
 
 - **Frontend:** Next.js application deployed on Vercel.
@@ -17,6 +19,8 @@ Browser -> Vercel (Next.js frontend)
 - **Authentication service:** This repository's NestJS Baloot Auth service.
 - **Database:** Managed PostgreSQL hosted by Neon.
 - **API hosting:** Render, using Docker for Nginx and the NestJS services.
+- **Messaging:** RabbitMQ for asynchronous events, commands, and durable
+  background work shared by the domain services.
 - **Source and deployment workflow:** GitHub.
 
 This is the intended topology, not a claim that the gateway, Nginx
@@ -54,7 +58,7 @@ Keep ownership clear: catalog owns product information, inventory owns stock,
 order owns the purchase and its lifecycle, and pay owns provider-specific
 payment state. Snapshot product details, prices, discounts, tax, and totals on
 each order so later catalog or pricing changes do not alter purchase history.
-Use durable, idempotent event handling for cross-service effects as the
+Use RabbitMQ for asynchronous events and commands between services as the
 system grows.
 
 ## Shared platform services
@@ -67,13 +71,120 @@ domain services:
 - **Docker and Render** — deployment for the API-side services.
 - **Neon PostgreSQL** — persistent storage. Keep service data ownership clear;
   do not let services directly modify another service's tables.
+- **RabbitMQ** — message broker for durable asynchronous service-to-service
+  events and commands. It is shared infrastructure, not a `baloot-*` business
+  service.
 - **Metrics and dashboards** — instrument each service and collect metrics
   with Prometheus; visualize and alert with Grafana. An OpenTelemetry
   Collector is optional when a shared telemetry pipeline is useful. This
   does not require a separate metrics business service.
-- **Queue/event transport, logs, tracing, secrets management, and backups** —
-  add the operational components needed for reliable asynchronous work and
-  production support.
+- **Logs, tracing, secrets management, and backups** — add the operational
+  components needed for production support.
+
+## RabbitMQ event-driven integration
+
+Use RabbitMQ when a service needs to announce a committed business change or
+request work from another service without making the originating HTTP request
+wait for every downstream operation. Keep synchronous request/response calls
+for operations that must return an immediate result, such as a catalog read
+or a checkout validation result. Do not use the broker as a substitute for
+service APIs or as a shared database.
+
+### Service responsibilities
+
+| Service            | Publish                                                                                                         | Consume                                                                                                                                 |
+| ------------------ | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `baloot-catalog`   | `catalog.product-created`, `catalog.product-updated`, `catalog.product-published`, `catalog.product-archived`   | Inventory setup/update commands if the product workflow requires them.                                                                  |
+| `baloot-inventory` | `inventory.stock-adjusted`, `inventory.stock-reserved`, `inventory.stock-released`, `inventory.stock-committed` | Order reservation/release requests; catalog product lifecycle events where appropriate.                                                 |
+| `baloot-order`     | `order.placed`, `order.cancelled`, `order.fulfillment-updated`, `order.completed`                               | Payment succeeded/failed/refunded events; inventory reservation results; catalog/inventory events needed to update its own read models. |
+| `baloot-pay`       | `payment.succeeded`, `payment.failed`, `payment.refunded`                                                       | Payment creation/refund commands from the order workflow and provider webhook work.                                                     |
+| `baloot-relay`     | Normally none for core delivery; optionally notification delivery status events                                 | Selected order, payment, and auth events that require customer notification.                                                            |
+| `baloot-auth`      | Optional account lifecycle events, such as `auth.user-registered`                                               | Only events needed for an auth-owned responsibility; it remains the source of truth for identity and sessions.                          |
+
+These are illustrative event names and ownership boundaries, not implemented
+contracts. Define payload schemas and versions before consumers depend on
+them. Events should describe facts that have already happened; commands ask a
+specific service to perform work. For example, `order.placed` is a fact,
+whereas a stock reservation request is a command.
+
+### Exchange and queue layout
+
+Use a durable topic exchange for domain events, with routing keys such as
+`order.placed` and `payment.succeeded`. Give each consuming service its own
+durable queue bound to only the event patterns it needs. If both `baloot-relay`
+and `baloot-order` need `payment.succeeded`, bind separate queues so each
+service receives the event; multiple replicas of one consumer may share that
+service's queue for competing-consumer processing.
+
+Route commands to the queue owned by the target service, for example an
+inventory reservation command to an inventory command queue. Return command
+results as events or explicit replies with correlation IDs. Keep queue names,
+bindings, retry queues, and dead-letter exchanges in version-controlled
+deployment configuration. The gateway handles synchronous HTTP routing and
+should not own business events or consume domain queues.
+
+### Order and payment flow
+
+1. `baloot-order` validates current catalog/price data and requests an
+   inventory reservation. Inventory is authoritative for stock; a stale
+   cached quantity must never decide whether an order can be fulfilled.
+2. After reservation succeeds, `baloot-order` persists a pending order and
+   its line-item, price, discount, tax, and total snapshots.
+3. `baloot-order` requests payment creation from `baloot-pay`. Use an
+   idempotency key tied to the order/payment attempt so retries do not create
+   duplicate charges.
+4. `baloot-pay` verifies provider webhook signatures, persists the provider
+   outcome, and publishes a payment result. It must not treat a browser
+   success/return page as proof of payment.
+5. `baloot-order` consumes the payment result idempotently and owns the order
+   state transition. It then requests inventory commitment and publishes
+   `order.placed`/the appropriate fulfillment-ready event only according to
+   the agreed state machine.
+6. On cancellation or payment failure, order coordinates reservation
+   release and any required refund. Make each operation retry-safe and
+   reconcile uncertain provider or broker outcomes.
+
+Specify the exact state machine and when an order is considered placed
+before implementation; the sequence above is a starting point, not a
+replacement for that design.
+
+### Reliability requirements
+
+- **Transactional outbox:** A service writes its business change and an
+  outbox row in the same database transaction. A publisher sends pending
+  outbox records to RabbitMQ using publisher confirms and marks them sent
+  only after confirmation. This prevents a committed order/payment change
+  from silently losing its event. Do not publish inside a database
+  transaction and assume the two systems commit atomically.
+- **Durable delivery:** Use durable exchanges and queues, persistent
+  messages, manual consumer acknowledgements, and an appropriate replicated
+  queue type for the deployment. Set bounded message sizes and retention.
+- **At-least-once and idempotency:** Expect redelivery; do not promise
+  exactly-once delivery. Include a stable event/message ID and schema version.
+  Consumers should deduplicate using a durable inbox/processed-message
+  record with a uniqueness constraint, committed atomically with the
+  consumer's database changes.
+- **Retries and dead letters:** Retry transient errors with bounded
+  backoff. Route exhausted or invalid messages to a dead-letter queue, alert
+  operators, and provide a safe inspection/replay procedure. Avoid immediate
+  infinite requeue loops.
+- **Ordering:** Assume messages may be duplicated and can arrive out of
+  order across queues/consumers. Include aggregate IDs and sequence/version
+  where ordering matters, and enforce valid state transitions at the owning
+  service.
+- **Contracts:** Version event schemas compatibly; include event ID, event
+  type, schema version, occurrence time, producer, and aggregate ID. Avoid
+  secrets, payment credentials, and unnecessary personal data in messages.
+- **Operations:** Monitor queue depth, oldest-message age, consumer errors,
+  redeliveries, dead-letter counts, and broker availability. Keep broker
+  credentials private and restrict network access to service workloads.
+
+Start with RabbitMQ for both asynchronous inter-service messaging and
+background jobs that need durable delivery. BullMQ is not needed by default;
+it adds a separate Redis-backed queue system. Consider it only if a concrete
+Redis-specific job feature is needed and the operational cost of running a
+second broker is justified. Redis caching, if later added, remains separate
+from RabbitMQ's durable messaging role.
 
 ## Application configuration
 
@@ -194,6 +305,11 @@ migration for an existing populated schema.
       networking, and plan requirements using official documentation.
 - [ ] Build and deploy the Nginx and NestJS gateway components; keep backend
       service addresses private.
+- [ ] Provision private RabbitMQ access for publishers/consumers, including
+      durable queues, retry/dead-letter handling, monitoring, and protected
+      credentials.
+- [ ] Implement outbox publishing and idempotent consumers before relying on
+      messages for order, inventory, payment, or notification correctness.
 - [ ] Verify container-network reachability: the gateway and Nginx can reach
       their upstreams, while public clients cannot bypass Nginx.
 - [ ] Confirm current Neon PostgreSQL connection and pooling guidance for
