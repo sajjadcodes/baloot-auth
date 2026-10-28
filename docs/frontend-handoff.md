@@ -6,6 +6,14 @@ example, `store-api-gateway`). This gateway is application-specific, not a
 reusable `baloot-*` service. The frontend must not call the Baloot Auth
 service directly in production.
 
+This document is the frontend-to-gateway auth integration contract. The
+gateway should implement this contract; building the gateway does not by
+itself require frontend changes. The [authentication API](./authentication-api.md)
+defines endpoint behavior, and the [infrastructure guide](./infrastructure.md)
+defines the planned deployment topology. Example domains are placeholders.
+Update this handoff only when the intended browser-facing contract changes,
+not merely when gateway internals or deployment configuration change.
+
 ## Request path
 
 ```text
