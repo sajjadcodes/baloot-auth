@@ -49,19 +49,18 @@ migration history was removed. Existing environments need a reviewed
 baseline/adoption plan that matches their actual schema before using this
 migration history.
 
-The Supabase database currently used for testing is described as empty. Even
-so, do not apply migrations to it automatically; run the deployment command
-only after confirming the configured `DATABASE_URL` points to the intended
-test project.
+The Neon database is the managed PostgreSQL provider for deployment. Do not
+apply migrations automatically; run the deployment command only after
+confirming the configured `DATABASE_URL` points to the intended environment.
 
 ## Commands
 
-| Command | Purpose |
-| --- | --- |
-| `pnpm db:generate` | Generate Prisma Client from the Prisma 7 schema. |
-| `pnpm db:migrate:dev` | Create/apply migrations in local development. |
+| Command                  | Purpose                                               |
+| ------------------------ | ----------------------------------------------------- |
+| `pnpm db:generate`       | Generate Prisma Client from the Prisma 7 schema.      |
+| `pnpm db:migrate:dev`    | Create/apply migrations in local development.         |
 | `pnpm db:migrate:deploy` | Apply committed migrations without creating new ones. |
-| `pnpm db:seed` | Seed configured clients/origins and built-in roles. |
+| `pnpm db:seed`           | Seed configured clients/origins and built-in roles.   |
 
 Never commit database credentials or use production credentials for local
 development.

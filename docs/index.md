@@ -6,7 +6,7 @@ Each guide covers one area of Baloot Auth:
 - [Authentication API](./authentication-api.md) — endpoints, browser cookies, verification, password reset, and client origins.
 - [Security](./security.md) — request-origin protection, token handling, roles, and admin authorization.
 - [Database and migrations](./database.md) — Prisma ORM 7 schema, client generation, and migration workflow.
-- [Infrastructure and deployment](./infrastructure.md) — planned blitz.cloud application hosting and Supabase PostgreSQL architecture.
+- [Infrastructure and deployment](./infrastructure.md) — Render application hosting and Neon PostgreSQL architecture.
 - [Testing](./testing.md) — unit tests, build and lint checks, plus a post-migration smoke-test checklist.
 - [Platform administrator operations](./platform-admin-operations.md) — securely grant or revoke `platform_admin`.
 - [Account and session administration](./account-session-administration.md) — admin account/session endpoints, audit behavior, and schema notes.

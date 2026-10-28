@@ -72,8 +72,8 @@ and [Account and session administration](./account-session-administration.md).
 - Do not commit `.env` values, database URLs, or API credentials.
 - Keep host and database credentials in their respective protected
   configuration systems; do not include them in build artifacts or logs.
-- For the planned blitz.cloud and Supabase deployment, verify current
-  provider-specific ingress, TLS, database connection, and Free-tier guidance
+- For the Render and Neon deployment, verify current provider-specific
+  ingress, TLS, database connection, and plan guidance
   before configuring production.
 - Configure exact trusted frontend origins globally and per client.
 - Keep cookies HttpOnly and do not store tokens in browser storage.

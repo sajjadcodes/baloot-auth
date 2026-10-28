@@ -8,13 +8,11 @@ password reset, HttpOnly cookie authentication, rotating refresh tokens,
 revocable sessions, role-based authorization, and same-client platform
 administrator operations.
 
-## Planned hosting
+## Hosting
 
-The target deployment is the NestJS backend on blitz.cloud with managed
-PostgreSQL on Supabase. The application remains a backend-only service; no
-frontend is included. Local development remains supported. Provider-specific
-deployment settings and database connection details must be verified against
-the current official documentation before deployment.
+The NestJS backend is hosted on Render and uses Neon for managed PostgreSQL.
+The application remains a backend-only service; no frontend is included.
+Local development remains supported.
 
 ## Documentation
 
@@ -58,9 +56,8 @@ See [Testing](./docs/testing.md) for focused test commands and the manual
 smoke-test checklist. See [Database and migrations](./docs/database.md) before
 making schema or database changes.
 
-See [Infrastructure](./docs/infrastructure.md) for the planned blitz.cloud and
-Supabase deployment architecture, configuration boundaries, and rollout
-checklist.
+See [Infrastructure](./docs/infrastructure.md) for the Render and Neon
+deployment architecture, configuration boundaries, and rollout checklist.
 
 ## Project Principles
 

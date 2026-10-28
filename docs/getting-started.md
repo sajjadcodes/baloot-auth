@@ -7,8 +7,8 @@ with NestJS, TypeScript, PostgreSQL, and Prisma ORM 7.
 
 - Node.js compatible with the installed project dependencies.
 - pnpm.
-- PostgreSQL (local for development; Supabase is the planned managed provider
-  for deployment).
+- PostgreSQL (local for development; Neon is the managed provider for
+  deployment).
 - Access to the environment's approved database and email-delivery
   configuration.
 
@@ -64,7 +64,7 @@ Keep deployment-specific values in the environment's protected configuration,
 not in Git. See [Security](./security.md) and
 [Platform administrator operations](./platform-admin-operations.md).
 
-For the planned hosted architecture and deployment readiness checklist, see
+For the hosted architecture and deployment checklist, see
 [Infrastructure and deployment](./infrastructure.md). Do not copy hosted
 database credentials into local development configuration.
 
